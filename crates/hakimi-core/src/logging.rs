@@ -118,7 +118,6 @@ fn open_log_file(path: &Path) -> File {
         })
 }
 
-#[cfg(any(target_os = "android", not(feature = "env-filter")))]
 fn install<W>(writer: W, level: &str, format: LogFormat, _options: LoggingOptions) -> bool
 where
     W: for<'writer> MakeWriter<'writer> + Send + Sync + 'static,
@@ -139,47 +138,6 @@ where
         LogFormat::Json => {
             let subscriber = tracing_subscriber::fmt()
                 .with_max_level(filter)
-                .with_writer(writer)
-                .with_ansi(false)
-                .with_target(true)
-                .json()
-                .flatten_event(true)
-                .with_current_span(false)
-                .with_span_list(false);
-            subscriber.try_init().is_ok()
-        }
-    };
-    if installed {
-        INITIALIZED.store(true, Ordering::Relaxed);
-    }
-    installed
-}
-
-#[cfg(all(not(target_os = "android"), feature = "env-filter"))]
-fn install<W>(writer: W, level: &str, format: LogFormat, options: LoggingOptions) -> bool
-where
-    W: for<'writer> MakeWriter<'writer> + Send + Sync + 'static,
-{
-    let filter = if options.explicit_level {
-        tracing_subscriber::EnvFilter::new(level.to_ascii_lowercase())
-    } else {
-        tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level.to_ascii_lowercase()))
-    };
-    let installed = match format {
-        LogFormat::Text => {
-            let subscriber = tracing_subscriber::fmt()
-                .with_env_filter(filter)
-                .with_writer(writer)
-                .with_ansi(false)
-                .with_target(true);
-            subscriber.try_init().is_ok()
-        }
-        LogFormat::Json => {
-            // JSONL is append-only and self-describing, which makes it suitable
-            // for local analysis (jq/SQLite/ClickHouse) without a text parser.
-            let subscriber = tracing_subscriber::fmt()
-                .with_env_filter(filter)
                 .with_writer(writer)
                 .with_ansi(false)
                 .with_target(true)

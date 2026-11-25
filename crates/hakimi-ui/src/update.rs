@@ -12,8 +12,9 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
-pub const PROJECT: &str = "NLick47/hakimi";
-pub const RELEASES_URL: &str = "https://github.com/NLick47/hakimi/releases";
+// [fork] 更新检查指向本 fork 的发布页，否则会去拉上游作者的 Release。
+pub const PROJECT: &str = "baipinaaa/hakimi";
+pub const RELEASES_URL: &str = "https://github.com/baipinaaa/hakimi/releases";
 
 fn manifest_url() -> String {
     format!("https://github.com/{PROJECT}/releases/latest/download/latest.json")
@@ -42,27 +43,27 @@ pub async fn check() -> Result<CheckOutcome> {
         .timeout(Duration::from_secs(12))
         .user_agent(format!("hakimi/{}", current_version()))
         .build()
-        .context("building the update client")?;
+        .context("构建更新客户端失败")?;
     let response = client
         .get(manifest_url())
         .header("Accept", "application/json")
         .send()
         .await
-        .context("requesting the update manifest")?;
+        .context("请求更新清单失败")?;
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         // No release has been published yet; that is not an error.
         return Ok(CheckOutcome::UpToDate);
     }
     let status = response.status();
     if !status.is_success() {
-        bail!("GitHub returned HTTP {}", status.as_u16());
+        bail!("GitHub 返回了 HTTP {}", status.as_u16());
     }
     let text = response
         .text()
         .await
-        .context("reading the update manifest")?;
+        .context("读取更新清单失败")?;
     let body: Value =
-        serde_json::from_str(&text).context("decoding the update manifest")?;
+        serde_json::from_str(&text).context("解析更新清单失败")?;
     parse_manifest(&body, current_version())
 }
 
@@ -70,7 +71,7 @@ pub async fn check() -> Result<CheckOutcome> {
 pub fn parse_manifest(body: &Value, current: &str) -> Result<CheckOutcome> {
     let schema = body.get("schema").and_then(Value::as_u64);
     if schema != Some(1) {
-        bail!("unsupported update manifest schema");
+        bail!("不支持该更新清单的格式版本");
     }
 
     let Some(desktop) = body.get("desktop").and_then(Value::as_object) else {
@@ -84,7 +85,7 @@ pub fn parse_manifest(body: &Value, current: &str) -> Result<CheckOutcome> {
         .trim();
     let version = version.strip_prefix('v').unwrap_or(version).trim();
     if version.is_empty() || parse_version(version).is_none() {
-        bail!("the update manifest has no usable desktop version");
+        bail!("更新清单里没有可用的桌面版本");
     }
     if !is_newer(version, current) {
         return Ok(CheckOutcome::UpToDate);

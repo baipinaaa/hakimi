@@ -2,8 +2,6 @@
 resolver = "2"
 members = [
     "crates/hakimi-core",
-    "crates/hakimi-cli",
-    "crates/hakimi-ffi",
     "crates/hakimi-ui",
     "crates/hakimi-android",
 ]
@@ -89,8 +87,8 @@ strip = "symbols"
 opt-level = "s"
 
 # Desktop UI only: panic=abort removes the unwinding tables from the final
-# binary. This is a separate profile so `release` keeps unwind for the C ABI
-# (`hakimi-ffi` uses catch_unwind) and Android keeps it for the JNI shell.
+# binary. This is a separate profile so `release` keeps unwind for Android,
+# whose JNI shell uses `catch_unwind` to turn a panic into an error.
 [profile.desktop-release]
 inherits = "release"
 opt-level = "z"

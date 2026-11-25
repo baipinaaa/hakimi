@@ -1,7 +1,7 @@
 //! hakimi shared Rust core.
 //!
-//! The crate is intentionally UI-agnostic. Desktop shells call into [`runtime::HakimiRuntime`]
-//! (or the C ABI in `hakimi-ffi`); Android can reuse the same modules through JNI later.
+//! The crate is intentionally UI-agnostic. Desktop shells call into [`runtime::HakimiRuntime`];
+//! Android reuses the same modules through JNI.
 //!
 //! Module map follows the design document:
 //! - [`config`] global/group/catalog configuration

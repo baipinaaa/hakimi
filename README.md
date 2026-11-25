@@ -51,16 +51,8 @@ hakimi 运行在本机，优化已启用站点的连接，让它们在国内不�
 
 ### Linux
 
-只有 CLI 版本，需要自己编译：
-
-```sh
-cargo build --release -p hakimi-cli     # 产物在 target/release/hakimi
-sudo target/release/hakimi --data-dir "$HOME/.local/share/hakimi" ca install
-target/release/hakimi serve --log-stdout
-eval "$(target/release/hakimi env)"
-```
-
-Linux 上没有统一的系统代理，hakimi 只提供代理端口，不接管系统设置，`packaging/hakimi.service` 是现成的 systemd user unit，目前只在 CI 上跑过冒烟测试，实用性未知
+本 fork 只保留桌面壳（Windows 优先）与 Android，不再附带 CLI 版本，也没有 systemd unit。
+需要命令行模式时，请用上游 [NLick47/hakimi](https://github.com/NLick47/hakimi) 的 `hakimi-cli`。
 
 ## 配置
 

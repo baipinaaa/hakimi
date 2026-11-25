@@ -10,7 +10,6 @@ description = "hakimi shared Rust core: catalogs, DoH/ECH, IP testing, local MIT
 
 [features]
 default = []
-env-filter = ["tracing-subscriber/env-filter"]
 
 [dependencies]
 anyhow.workspace = true
