@@ -10,6 +10,11 @@ use rustls::ServerConfig;
 use time::{Duration as TimeDuration, OffsetDateTime};
 
 use crate::paths::Paths;
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows::*;
 use crate::util::{atomic_write, atomic_write_private, sha1_hex, sha256_hex};
 
 use super::CA_COMMON_NAME;
@@ -196,8 +201,6 @@ fn persist_material(paths: &Paths, material: &CaMaterial) -> Result<()> {
     Ok(())
 }
 
-#[cfg(windows)]
-const DPAPI_MAGIC: &[u8] = b"HAKIMI-DPAPI";
 
 fn encode_key_file(pem: &[u8]) -> Result<Vec<u8>> {
     #[cfg(windows)]
@@ -231,75 +234,6 @@ fn decode_key_file(bytes: &[u8]) -> Result<String> {
     String::from_utf8(bytes.to_vec()).context("CA key file is not valid UTF-8")
 }
 
-#[cfg(windows)]
-fn dpapi_protect(plaintext: &[u8]) -> Result<Vec<u8>> {
-    use std::ffi::c_void;
-    use windows_sys::Win32::Foundation::LocalFree;
-    use windows_sys::Win32::Security::Cryptography::{
-        CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
-
-    unsafe {
-        let input = CRYPT_INTEGER_BLOB {
-            cbData: plaintext.len() as u32,
-            pbData: plaintext.as_ptr() as *mut u8,
-        };
-        let mut output = CRYPT_INTEGER_BLOB {
-            cbData: 0,
-            pbData: std::ptr::null_mut(),
-        };
-        let ok = CryptProtectData(
-            &input,
-            std::ptr::null(),
-            std::ptr::null(),
-            std::ptr::null(),
-            std::ptr::null(),
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
-        );
-        if ok == 0 {
-            bail!("CryptProtectData failed");
-        }
-        let bytes = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
-        LocalFree(output.pbData as *mut c_void);
-        Ok(bytes)
-    }
-}
-
-#[cfg(windows)]
-fn dpapi_unprotect(protected: &[u8]) -> Result<Vec<u8>> {
-    use std::ffi::c_void;
-    use windows_sys::Win32::Foundation::LocalFree;
-    use windows_sys::Win32::Security::Cryptography::{
-        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
-
-    unsafe {
-        let input = CRYPT_INTEGER_BLOB {
-            cbData: protected.len() as u32,
-            pbData: protected.as_ptr() as *mut u8,
-        };
-        let mut output = CRYPT_INTEGER_BLOB {
-            cbData: 0,
-            pbData: std::ptr::null_mut(),
-        };
-        let ok = CryptUnprotectData(
-            &input,
-            std::ptr::null_mut(),
-            std::ptr::null(),
-            std::ptr::null(),
-            std::ptr::null(),
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
-        );
-        if ok == 0 {
-            bail!("CryptUnprotectData failed");
-        }
-        let bytes = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
-        LocalFree(output.pbData as *mut c_void);
-        Ok(bytes)
-    }
-}
 
 pub fn pem_to_der(pem: &str) -> Result<Vec<u8>> {
     let mut in_cert = false;
