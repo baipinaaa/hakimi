@@ -1,0 +1,39 @@
+name: Regenerate lockfile
+
+# 一次性工具：删掉 hakimi-cli / hakimi-ffi 之后 Cargo.lock 里还留着它们的
+# 包条目，`--locked` 构建会直接失败。本地没有 Rust 工具链，所以借一次 runner
+# 跑 cargo generate-lockfile 并把结果提交回来。
+#
+# 用完之后这个文件可以删掉：它不属于日常流程。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  regen:
+    runs-on: windows-latest
+    env:
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Regenerate Cargo.lock
+        run: cargo generate-lockfile
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Cargo.lock 已是最新，无需提交"
+            exit 0
+          fi
+          git commit -m "chore(deps): 重新生成 Cargo.lock（移除 cli/ffi 后）"
+          git push
