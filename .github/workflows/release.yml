@@ -177,6 +177,7 @@ jobs:
           name: hakimi-${{ needs.prepare.outputs.desktop_version }}-windows-x64
           path: dist/hakimi-*-windows-x64.zip
           if-no-files-found: error
+          retention-days: 1
 
   macos:
     name: macOS arm64
@@ -230,6 +231,7 @@ jobs:
           name: hakimi-${{ needs.prepare.outputs.desktop_version }}-macos-arm64
           path: dist/hakimi-*-macos-arm64.dmg
           if-no-files-found: error
+          retention-days: 1
 
   android:
     name: Android arm64 + armv7
@@ -409,6 +411,7 @@ jobs:
             dist/hakimi-*-android.apk
             dist/hakimi-*-armv7.apk
           if-no-files-found: error
+          retention-days: 1
 
   release:
     name: Publish GitHub Release
@@ -417,7 +420,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      actions: read
+      actions: write
     steps:
       - uses: actions/checkout@v7
 
@@ -505,3 +508,17 @@ jobs:
               --title "$TITLE" \
               --notes-file CHANGELOG.md
           fi
+
+      # 产物已经进了 Release，中转用的 artifact 没有留下的必要。
+      - name: Drop transfer artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          ids=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | select(.name | startswith("hakimi-")) | .id')
+          for id in $ids; do
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}" >/dev/null
+            echo "已删除中转 artifact ${id}"
+          done
