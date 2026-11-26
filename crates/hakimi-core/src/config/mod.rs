@@ -834,6 +834,109 @@ pub fn default_groups() -> Vec<GroupConfig> {
             true,
             "https://store.steampowered.com/",
         ),
+        // [fork] 以下站点组对齐 dev-sidecar 的常用加速场景：容器/NPM/PyPI
+        // 是开发链路上的高频卡点，Discord/Twitch/MEGA/公共 CDN 是日常网页。
+        // 全部落在 Cloudflare 边缘，直接吃共享 ECH，省掉每次查询 HTTPS 记录。
+        group(
+            "docker",
+            "Docker Hub",
+            vec![
+                ech("hub.docker.com"),
+                ech("registry-1.docker.io"),
+                ech("auth.docker.io"),
+                ech("production.cloudflare.docker.com"),
+                ech("*.docker.com"),
+                ech("*.docker.io"),
+            ],
+            RoutePolicy::ech_shared(),
+            true,
+            "https://hub.docker.com/",
+        ),
+        group(
+            "npm",
+            "NPM",
+            vec![
+                plain("registry.npmjs.org"),
+                plain("*.npmjs.org"),
+                plain("registry.yarnpkg.com"),
+                plain("*.yarnpkg.com"),
+            ],
+            RoutePolicy::auto(),
+            true,
+            "https://www.npmjs.com/",
+        ),
+        group(
+            "pypi",
+            "PyPI",
+            vec![
+                plain("pypi.org"),
+                plain("*.pypi.org"),
+                plain("files.pythonhosted.org"),
+                plain("*.pythonhosted.org"),
+            ],
+            RoutePolicy::auto(),
+            true,
+            "https://pypi.org/",
+        ),
+        group(
+            "discord",
+            "Discord",
+            vec![
+                ech("discord.com"),
+                ech("*.discord.com"),
+                ech("discord.gg"),
+                ech("*.discord.gg"),
+                ech("*.discordapp.com"),
+                ech("*.discordapp.net"),
+                ech("*.discord.media"),
+            ],
+            RoutePolicy::ech_shared(),
+            true,
+            "https://discord.com/",
+        ),
+        group(
+            "twitch",
+            "Twitch",
+            vec![
+                plain("twitch.tv"),
+                plain("www.twitch.tv"),
+                plain("*.twitch.tv"),
+                // 直播分发与播放器脚本所在的 CDN，缺了页面起不来。
+                plain("*.ttvnw.net"),
+                plain("*.jtvnw.net"),
+            ],
+            RoutePolicy::auto(),
+            true,
+            "https://www.twitch.tv/",
+        ),
+        group(
+            "mega",
+            "MEGA",
+            vec![
+                ech("mega.nz"),
+                ech("*.mega.nz"),
+                ech("mega.io"),
+                ech("*.mega.io"),
+            ],
+            RoutePolicy::ech_shared(),
+            true,
+            "https://mega.nz/",
+        ),
+        group(
+            "cdn",
+            "公共 CDN",
+            vec![
+                ech("cdn.jsdelivr.net"),
+                ech("*.jsdelivr.net"),
+                ech("unpkg.com"),
+                ech("*.unpkg.com"),
+                ech("cdnjs.cloudflare.com"),
+                ech("*.workers.dev"),
+            ],
+            RoutePolicy::ech_shared(),
+            true,
+            "https://cdn.jsdelivr.net/",
+        ),
         group(
             "poipiku",
             "Poipiku",
@@ -911,6 +1014,11 @@ pub fn default_groups() -> Vec<GroupConfig> {
                     "www.google.com.hk",
                     RoutePolicy::sni(vec!["www.google.com.hk.".to_string()]),
                 ),
+                // [fork] 字体与 API 是 Google 系页面能起来的前提，单独放行。
+                plain("fonts.googleapis.com"),
+                plain("fonts.gstatic.com"),
+                plain("*.gstatic.com"),
+                plain("*.googleapis.com"),
             ],
             RoutePolicy::sni(vec![
                 "www.google.com.".to_string(),
@@ -1802,7 +1910,7 @@ mod tests {
     fn defaults_validate_and_match_document() {
         let config = AppConfig::default();
         config.validate().unwrap();
-        assert_eq!(config.groups.len(), 11);
+        assert_eq!(config.groups.len(), 18);
         let x = config.group("x-com").unwrap();
         assert!(x.enabled);
         assert!(x.domains.iter().any(|rule| rule.pattern == "*.twimg.com"));

@@ -24,7 +24,7 @@ hakimi 运行在本机，优化已启用站点的连接，让它们在国内不�
 
 ## 功能
 
-- 内置了一部分站点（GitHub、Pixiv、Hugging Face、E-Hentai、Hitomi、Hanime、Steam、Poipiku），也可以自己添加，域名和线路都能改
+- 内置 18 个站点组（GitHub、Pixiv、Hugging Face、Steam、Docker Hub、NPM、PyPI、Discord、Twitch、MEGA、公共 CDN、X、Google、E-Hentai、Hitomi、Hanime、AO3、Poipiku），也可以自己添加，域名和线路都能改
 - 线路默认自动，直连、ECH、伪装 SNI 同时试，哪个先通就用哪个
 - IP 选择：按实测延迟排序，快的优先、失败的降权，记忆上次可用的地址
 - 在用的线路定期与备选地址复测，保持最优 IP 连接
