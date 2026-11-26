@@ -487,8 +487,6 @@ fn windows_current(
     }
 }
 
-#[cfg(windows)]
-
 #[cfg(any(target_os = "macos", test))]
 fn scutil_proxy_text() -> Option<String> {
     let output = std::process::Command::new("scutil")
