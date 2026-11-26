@@ -4,15 +4,15 @@
 
 use super::*;
 
-pub(super) fn trust_status(
+pub(crate) fn trust_status(
     _sha1_hex: &str,
     _cert_path: &Path,
 ) -> Result<(bool, bool, Option<String>)> {
     Ok((true, ANDROID_CA_TRUSTED.load(Ordering::SeqCst), None))
 }
-pub(super) fn install_cert(_der: &[u8], _pem_path: &Path) -> Result<()> {
+pub(crate) fn install_cert(_der: &[u8], _pem_path: &Path) -> Result<()> {
     bail!("请在 Android 设置中手动安装导出的 CA（用户证书）")
 }
-pub(super) fn uninstall_by_sha1(_sha1_hex: &str, _remove_trust: bool) -> Result<()> {
+pub(crate) fn uninstall_by_sha1(_sha1_hex: &str, _remove_trust: bool) -> Result<()> {
     bail!("请在 Android 设置中手动移除该 CA")
 }

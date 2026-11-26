@@ -457,6 +457,7 @@ async fn forward_with_uri(
         // The mirrored path never reads `parts.headers` again, so the mirror
         // copy moves instead of cloning the whole map a second time.
         (direct_headers, std::mem::take(&mut parts.headers))
+    } else {
         // No mirror runs on this request, and the direct retry below is only
         // reachable from the mirrored branch. The segment base needs just the
         // handful of credential headers, so keep that small subset instead of

@@ -10,7 +10,7 @@ use super::*;
     target_os = "android",
     target_os = "linux"
 )))]
-pub(super) fn trust_status(
+pub(crate) fn trust_status(
     _sha1_hex: &str,
     _cert_path: &Path,
 ) -> Result<(bool, bool, Option<String>)> {
@@ -27,7 +27,7 @@ pub(super) fn trust_status(
     target_os = "android",
     target_os = "linux"
 )))]
-pub(super) fn install_cert(_der: &[u8], _pem_path: &Path) -> Result<()> {
+pub(crate) fn install_cert(_der: &[u8], _pem_path: &Path) -> Result<()> {
     bail!("该平台不支持自动安装 CA；请用 `hakimi ca export` 导出后手动信任")
 }
 #[cfg(not(any(
@@ -36,6 +36,6 @@ pub(super) fn install_cert(_der: &[u8], _pem_path: &Path) -> Result<()> {
     target_os = "android",
     target_os = "linux"
 )))]
-pub(super) fn uninstall_by_sha1(_sha1_hex: &str, _remove_trust: bool) -> Result<()> {
+pub(crate) fn uninstall_by_sha1(_sha1_hex: &str, _remove_trust: bool) -> Result<()> {
     bail!("该平台不支持自动移除 CA")
 }

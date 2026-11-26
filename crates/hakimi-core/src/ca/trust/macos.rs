@@ -47,7 +47,7 @@ fn keychain_lookup(sha1_hex: &str) -> Result<(bool, usize)> {
     Ok((present, listed))
 }
 
-pub(super) fn trust_status(
+pub(crate) fn trust_status(
     sha1_hex: &str,
     cert_path: &Path,
 ) -> Result<(bool, bool, Option<String>)> {
@@ -82,7 +82,7 @@ pub(super) fn trust_status(
     }
 }
 
-pub(super) fn install_cert(_der: &[u8], pem_path: &Path) -> Result<()> {
+pub(crate) fn install_cert(_der: &[u8], pem_path: &Path) -> Result<()> {
     let keychain = keychain_path();
     let pem = pem_path.display().to_string();
     let output = Command::new("security")
@@ -139,7 +139,7 @@ pub(super) fn install_cert(_der: &[u8], pem_path: &Path) -> Result<()> {
     bail!("证书已导入，但授权对话框没有确认；请重新执行一次安装")
 }
 
-pub(super) fn uninstall_by_sha1(sha1_hex: &str, remove_trust: bool) -> Result<()> {
+pub(crate) fn uninstall_by_sha1(sha1_hex: &str, remove_trust: bool) -> Result<()> {
     let keychain = keychain_path();
     let thumbprint = sha1_hex.to_uppercase();
     // Nothing to delete is a no-op: `security delete-certificate` would exit

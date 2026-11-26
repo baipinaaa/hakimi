@@ -9,7 +9,7 @@ pub(super) fn install_target() -> Option<(String, String)> {
         .map(|layout| (layout.anchor.to_string(), layout.update.join(" ")))
 }
 
-pub(super) fn trust_status(
+pub(crate) fn trust_status(
     _sha1_hex: &str,
     cert_path: &Path,
 ) -> Result<(bool, bool, Option<String>)> {
@@ -37,7 +37,7 @@ pub(super) fn trust_status(
     Ok((true, distro::bundle_contains(&bundle, &der), None))
 }
 
-pub(super) fn install_cert(der: &[u8], pem_path: &Path) -> Result<()> {
+pub(crate) fn install_cert(der: &[u8], pem_path: &Path) -> Result<()> {
     let Some(layout) = distro::detect(distro::exists) else {
         bail!(
             "未找到受支持的 CA 信任库；该发行版可能用声明式方式管理信任（例如 NixOS）。\
@@ -61,7 +61,7 @@ pub(super) fn install_cert(der: &[u8], pem_path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn uninstall_by_sha1(_sha1_hex: &str, _remove_trust: bool) -> Result<()> {
+pub(crate) fn uninstall_by_sha1(_sha1_hex: &str, _remove_trust: bool) -> Result<()> {
     let Some(layout) = distro::detect(distro::exists) else {
         return Ok(());
     };

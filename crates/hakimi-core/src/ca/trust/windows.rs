@@ -4,7 +4,7 @@
 
 use super::*;
 
-pub(super) fn trust_status(
+pub(crate) fn trust_status(
     sha1_hex: &str,
     _cert_path: &Path,
 ) -> Result<(bool, bool, Option<String>)> {
@@ -57,7 +57,7 @@ unsafe fn win_store_find(hash: &[u8]) -> Result<bool> {
     Ok(!context.is_null())
 }
 
-pub(super) fn install_cert(der: &[u8], _pem_path: &Path) -> Result<()> {
+pub(crate) fn install_cert(der: &[u8], _pem_path: &Path) -> Result<()> {
     unsafe { win_store_add(der) }
 }
 
@@ -94,7 +94,7 @@ unsafe fn win_store_add(der: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn uninstall_by_sha1(sha1_hex: &str, _remove_trust: bool) -> Result<()> {
+pub(crate) fn uninstall_by_sha1(sha1_hex: &str, _remove_trust: bool) -> Result<()> {
     let hash = hex::decode(sha1_hex).context("解析 SHA-1 指纹")?;
     unsafe { win_store_delete(&hash) }
 }

@@ -126,27 +126,27 @@ pub(super) fn install_target() -> Option<(String, String)> {
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
-use windows::*;
+pub(crate) use windows::*;
 
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-use macos::*;
+pub(crate) use macos::*;
 
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-use linux::*;
+pub(crate) use linux::*;
 
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
-use android::*;
+pub(crate) use android::*;
 
 #[cfg(not(any(windows, target_os = "macos", target_os = "linux", target_os = "android")))]
 mod unsupported;
 #[cfg(not(any(windows, target_os = "macos", target_os = "linux", target_os = "android")))]
-use unsupported::*;
+pub(crate) use unsupported::*;
 
 // ---------------------------------------------------------------------------
 // Linux: distribution trust anchors
@@ -256,6 +256,7 @@ mod distro {
         false
     }
 }
+#[cfg(test)]
 mod trust_tests {
     use super::distro;
 

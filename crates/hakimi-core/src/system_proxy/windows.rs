@@ -36,7 +36,7 @@ pub(super) struct ConnectionBlob {
 }
 
 impl ConnectionBlob {
-    fn parse(bytes: &[u8]) -> Option<Self> {
+    pub(super) fn parse(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < 12 {
             return None;
         }
@@ -55,11 +55,11 @@ impl ConnectionBlob {
         })
     }
 
-    fn flags(&self) -> u32 {
+    pub(super) fn flags(&self) -> u32 {
         u32::from_le_bytes(self.prefix[8..12].try_into().expect("four flag bytes"))
     }
 
-    fn set_flags(&mut self, flags: u32) {
+    pub(super) fn set_flags(&mut self, flags: u32) {
         self.prefix[8..12].copy_from_slice(&flags.to_le_bytes());
     }
 
@@ -71,17 +71,17 @@ impl ConnectionBlob {
         blob_text(&self.proxy_bypass)
     }
 
-    fn pac_url(&self) -> Option<String> {
+    pub(super) fn pac_url(&self) -> Option<String> {
         blob_text(&self.pac_url)
     }
 
-    fn set_pac_url(&mut self, value: Option<&str>) {
+    pub(super) fn set_pac_url(&mut self, value: Option<&str>) {
         self.pac_url = value
             .map(|value| value.as_bytes().to_vec())
             .unwrap_or_default();
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    pub(super) fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(
             12 + self.proxy_server.len()
                 + self.proxy_bypass.len()

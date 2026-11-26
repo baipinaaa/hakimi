@@ -1210,7 +1210,7 @@ pub(crate) async fn segment(
         super::upstream::sanitize_response_headers(&mut parts.headers, false);
         return Response::from_parts(
             parts,
-            ProxyBody::upstream(body, uri, StatusCode::OK, ctx.upstream.clone(), None),
+            ProxyBody::upstream(body, uri, StatusCode::OK, ctx.upstream.clone()),
         );
     }
     let ranges_ok = if mirrored {
@@ -1242,7 +1242,7 @@ pub(crate) async fn segment(
         super::upstream::sanitize_response_headers(&mut parts.headers, false);
         return Response::from_parts(
             parts,
-            ProxyBody::upstream(body, uri, StatusCode::OK, ctx.upstream.clone(), None),
+            ProxyBody::upstream(body, uri, StatusCode::OK, ctx.upstream.clone()),
         );
     }
 
