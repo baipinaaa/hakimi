@@ -733,7 +733,57 @@ mod verification_tests {
     }
 }
 
+/// Run a child process with a hard deadline. The program is a parameter so the
+/// timeout behavior can be tested without a hanging `networksetup`.
+///
+/// 放在 `mod.rs` 而不是 `macos.rs`：它是纯 `std::process` 实现，和平台无关，
+/// 而 Windows 侧的测试也要用它验证超时逻辑。
+pub(super) fn run_command_with_timeout(
+    program: &str,
+    args: &[&str],
+    timeout_secs: u64,
+) -> Result<String> {
+    use std::io::Read;
+    let mut child = std::process::Command::new(program)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .with_context(|| format!("spawning {program} {args:?}"))?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
+    // Poll for exit FIRST and read the pipes only after: `read_to_string`
+    // blocks until the pipe closes, which only happens when the child exits,
+    // so reading first would make the deadline unreachable for a hung child.
+    let status = loop {
+        match child.try_wait()? {
+            Some(status) => break status,
+            None if std::time::Instant::now() > deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                bail!("{program} {args:?} timed out after {timeout_secs}s");
+            }
+            None => std::thread::sleep(Duration::from_millis(20)),
+        }
+    };
+    let mut stdout = String::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_string(&mut stdout);
+    }
+    if !status.success() {
+        let mut stderr = String::new();
+        if let Some(mut pipe) = child.stderr.take() {
+            let _ = pipe.read_to_string(&mut stderr);
+        }
+        bail!(
+            "{program} failed: {}",
+            String::from_utf8_lossy(stderr.as_bytes()).trim()
+        );
+    }
+    Ok(stdout)
+}
+
 #[cfg(test)]
+#[cfg(unix)]
 mod process_timeout_tests {
     use super::*;
 
