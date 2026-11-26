@@ -182,6 +182,8 @@ jobs:
   macos:
     name: macOS arm64
     needs: prepare
+    # 正式发布只出 Windows；macOS 只在 dry-run 里编译验证。
+    if: needs.prepare.outputs.is_release != 'true'
     runs-on: macos-latest
     env:
       # Build against an older SDK so the dmg also runs on older Macs.
@@ -236,6 +238,8 @@ jobs:
   android:
     name: Android arm64 + armv7
     needs: prepare
+    # 正式发布只出 Windows；Android 正式签名需要 keystore secrets，dry-run 不校验。
+    if: needs.prepare.outputs.is_release != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -415,7 +419,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [prepare, windows, macos, android]
+    needs: [prepare, windows]
     if: needs.prepare.outputs.is_release == 'true'
     runs-on: ubuntu-24.04
     permissions:
@@ -427,7 +431,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
-          pattern: hakimi-*
+          pattern: hakimi-*-windows-x64
           merge-multiple: true
 
       - name: Check release notes

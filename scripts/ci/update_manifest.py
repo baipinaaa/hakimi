@@ -29,10 +29,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--release-url", required=True)
     parser.add_argument("--desktop-version", required=True)
     parser.add_argument("--desktop-windows-asset", required=True)
-    parser.add_argument("--desktop-macos-asset", required=True)
-    parser.add_argument("--android-version", required=True)
-    parser.add_argument("--android-apk-asset", required=True)
-    parser.add_argument("--android-apk-armv7-asset", required=True)
+    parser.add_argument("--desktop-macos-asset", default="")
+    parser.add_argument("--android-version", default="")
+    parser.add_argument("--android-apk-asset", default="")
+    parser.add_argument("--android-apk-armv7-asset", default="")
     args = parser.parse_args(argv)
 
     release = args.release.strip()
@@ -43,14 +43,21 @@ def main(argv: list[str] | None = None) -> int:
         fail("release URL must be a GitHub URL")
 
     desktop_version, _ = parse_version(args.desktop_version)
-    android_version, android_version_code = parse_version(args.android_version)
 
+    # 只发 Windows 时，macOS 与 Android 的参数留空，对应的资产条目就不写进清单；
+    # 更新器按平台取键，缺的键等于「这个平台本次没有发布」。
     windows_asset = args.desktop_windows_asset.strip()
     macos_asset = args.desktop_macos_asset.strip()
     apk_asset = args.android_apk_asset.strip()
     apk_armv7_asset = args.android_apk_armv7_asset.strip()
-    if not windows_asset or not macos_asset or not apk_asset or not apk_armv7_asset:
-        fail("asset names must not be empty")
+    if not windows_asset:
+        fail("windows asset name must not be empty")
+    if bool(apk_asset) != bool(apk_armv7_asset):
+        fail("both android assets must be given, or neither")
+
+    desktop_assets = {"windows-x64": windows_asset}
+    if macos_asset:
+        desktop_assets["macos-arm64"] = macos_asset
 
     manifest = {
         "schema": 1,
@@ -58,12 +65,13 @@ def main(argv: list[str] | None = None) -> int:
         "desktop": {
             "version": desktop_version,
             "url": release_url,
-            "assets": {
-                "windows-x64": windows_asset,
-                "macos-arm64": macos_asset,
-            },
+            "assets": desktop_assets,
         },
-        "android": {
+    }
+    android_version_input = args.android_version.strip()
+    if android_version_input and apk_asset:
+        android_version, android_version_code = parse_version(android_version_input)
+        manifest["android"] = {
             "version": android_version,
             "versionCode": android_version_code,
             "url": release_url,
@@ -71,8 +79,7 @@ def main(argv: list[str] | None = None) -> int:
                 "arm64": apk_asset,
                 "armv7": apk_armv7_asset,
             },
-        },
-    }
+        }
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
