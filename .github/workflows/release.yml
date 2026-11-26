@@ -121,6 +121,10 @@ jobs:
       AWS_LC_SYS_PREBUILT_NASM: "1"
       # Link the VC runtime statically so the zip is a self-contained exe.
       RUSTFLAGS: "-C target-feature=+crt-static"
+      # 没有配置证书时签名步骤整体跳过，构建照常可用（只是 SmartScreen 会拦一次）。
+      SIGN_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGN_PFX_PASSWORD }}
+      SIGN_TIMESTAMP_URL: ${{ vars.WINDOWS_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -141,6 +145,20 @@ jobs:
       - name: Build desktop UI
         shell: bash
         run: bash ./scripts/build-desktop.sh
+
+      - name: Sign executable
+        if: env.SIGN_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          ./scripts/ci/sign-windows.ps1 -Path target/desktop/hakimi-ui.exe `
+            -PfxBase64 $env:SIGN_PFX_BASE64 -Password $env:SIGN_PFX_PASSWORD `
+            -TimestampUrl $env:SIGN_TIMESTAMP_URL
+
+      - name: Warn about unsigned build
+        if: env.SIGN_PFX_BASE64 == ''
+        shell: bash
+        run: |
+          echo "::warning::未配置 WINDOWS_SIGN_PFX_BASE64，本次产物未代码签名；Windows SmartScreen 会对首次运行拦截一次。"
 
       - name: Package zip
         shell: bash
