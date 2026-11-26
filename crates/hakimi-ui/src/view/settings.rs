@@ -458,6 +458,32 @@ fn section_network(s: UiSignals, tx: Sender<Action>) -> Element {
             ))
             .width_match(),
         )
+        .child(subhead("性能"))
+        .child(
+            card(
+                Element::col()
+                    .width_match()
+                    .child(field_row_fill(
+                        &s,
+                        "预热并发",
+                        "对已选站点提前探路的并发数（1–32）",
+                        "advanced.prewarmConcurrency",
+                        s.cfg_prewarm_concurrency,
+                        "8",
+                        tx.clone(),
+                    ))
+                    .child(field_row_fill(
+                        &s,
+                        "计划缓存",
+                        "同一域名复用选路结果的秒数（10–86400）",
+                        "advanced.planCacheSecs",
+                        s.cfg_plan_cache_secs,
+                        "600",
+                        tx.clone(),
+                    )),
+            )
+            .width_match(),
+        )
         .child(subhead("隧道中继"))
         .child(
             card(

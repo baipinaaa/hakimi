@@ -1058,9 +1058,13 @@ class MainActivity : Activity(), Host {
             value,
             when (key) {
                 "proxy.port" -> "8443"
+                "advanced.prewarmConcurrency" -> "8"
+                "advanced.planCacheSecs" -> "600"
                 else -> "https://…"
             },
-            numeric = key == "proxy.port",
+            numeric = key == "proxy.port" ||
+                key == "advanced.prewarmConcurrency" ||
+                key == "advanced.planCacheSecs",
         ) { raw ->
             val next = runCatching { JSONObject(data.configJson.toString()) }.getOrNull()
             if (next == null) {
@@ -1141,6 +1145,29 @@ class MainActivity : Activity(), Host {
                     }
                     advanced.put("http1Hosts", JSONArray(hosts))
                     true
+                }
+                // 预热并发与计划缓存：范围与 core 的 validate 一致，这里先拦
+                // 一次，免得用户改完才在下一轮状态里看到「配置有误」。
+                "advanced.prewarmConcurrency", "advanced.planCacheSecs" -> {
+                    val advanced = next.optJSONObject("advanced")
+                    if (advanced == null) {
+                        showSnack("配置尚未就绪", error = true)
+                        return@input
+                    }
+                    val number = raw.trim().toLongOrNull()
+                    val prewarm = key == "advanced.prewarmConcurrency"
+                    val range = if (prewarm) 1L..32L else 10L..86_400L
+                    if (number == null || number !in range) {
+                        showSnack(
+                            if (prewarm) "预热并发需在 1–32 之间"
+                            else "计划缓存需在 10–86400 秒之间",
+                            error = true
+                        )
+                        false
+                    } else {
+                        advanced.put(key.substringAfterLast('.'), number)
+                        true
+                    }
                 }
                 else -> false
             }

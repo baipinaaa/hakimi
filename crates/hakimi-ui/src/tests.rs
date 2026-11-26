@@ -690,6 +690,32 @@ fn download_controls_show_defaults_and_follow_the_config() {
     assert_eq!(crate::settings_values(&json).download_segments, "2");
 }
 
+/// The 性能 card shows the shipped 8 / 600 even when `advanced` serialises as an
+/// empty object (every field equals its default), and follows the config after
+/// that. Out-of-range values are clamped the same way the core validates them,
+/// so the field never shows a number the engine refuses to use.
+#[test]
+fn engine_tuning_controls_show_defaults_and_follow_the_config() {
+    let values = crate::settings_values(&serde_json::json!({ "advanced": {} }));
+    assert_eq!(values.prewarm_concurrency, "8");
+    assert_eq!(values.plan_cache_secs, "600");
+
+    let mut config = AppConfig::default();
+    config.advanced.prewarm_concurrency = 16;
+    config.advanced.plan_cache_secs = 120;
+    let json = serde_json::to_value(&config).unwrap();
+    let values = crate::settings_values(&json);
+    assert_eq!(values.prewarm_concurrency, "16");
+    assert_eq!(values.plan_cache_secs, "120");
+
+    config.advanced.prewarm_concurrency = 99;
+    config.advanced.plan_cache_secs = 5;
+    let json = serde_json::to_value(&config).unwrap();
+    let values = crate::settings_values(&json);
+    assert_eq!(values.prewarm_concurrency, "32");
+    assert_eq!(values.plan_cache_secs, "10");
+}
+
 /// The caption must name only the scenarios where the engine lands below the
 /// chosen ceiling: below 6 the pill already says everything, and a wrong merge
 /// condition would either lie or leak an empty line.

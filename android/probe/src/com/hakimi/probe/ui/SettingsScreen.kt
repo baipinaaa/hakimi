@@ -191,6 +191,28 @@ class SettingsScreen(private val context: Context, private val host: Host) {
         content.addView(rowsCard(http1HostsRow))
         content.addView(space(10f))
 
+        content.addView(section("性能"))
+        val prewarmRow = SettingRow(context, "预热并发", "对已选站点提前探路的并发数，1–32")
+        prewarmRow.clickOnce {
+            host.editSetting(
+                "advanced.prewarmConcurrency",
+                "预热并发",
+                "1–32 之间的整数；越大探路越快，但会同时占更多连接",
+                advancedNumber("prewarmConcurrency", "8")
+            )
+        }
+        val planCacheRow = SettingRow(context, "计划缓存", "同一域名复用选路结果的秒数，10–86400")
+        planCacheRow.clickOnce {
+            host.editSetting(
+                "advanced.planCacheSecs",
+                "计划缓存",
+                "10–86400 秒；调小更快发现坏线路，调大更省探路开销",
+                advancedNumber("planCacheSecs", "600")
+            )
+        }
+        content.addView(rowsCard(prewarmRow, planCacheRow))
+        content.addView(space(10f))
+
         content.addView(section("后台"))
         alwaysOnRow = SettingRow(context, "始终开启", "系统在开机后恢复 VPN")
         alwaysOnRow.clickOnce(1500L) { host.openVpnSettings() }
@@ -530,6 +552,14 @@ class SettingsScreen(private val context: Context, private val host: Host) {
 
         sheet.add(grid)
         sheet.show()
+    }
+
+    /// Reads a numeric setting from `advanced`; falls back when the core has not
+    /// answered yet, so the dialog never pre-fills with "null".
+    private fun advancedNumber(key: String, fallback: String): String {
+        val advanced = host.core.configJson.optJSONObject("advanced") ?: return fallback
+        val value = advanced.opt(key)
+        return if (value == null || value == JSONObject.NULL) fallback else value.toString()
     }
 
     /// Joined for the edit dialog; the same comma-separated shape the desktop

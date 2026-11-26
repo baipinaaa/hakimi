@@ -233,6 +233,8 @@ pub(crate) struct SettingsValues {
     pub download_mirror: bool,
     pub download_enabled: bool,
     pub download_segments: String,
+    pub prewarm_concurrency: String,
+    pub plan_cache_secs: String,
     pub relay_enabled: bool,
     pub relay_listen: String,
     pub relay_target: String,
@@ -276,6 +278,18 @@ pub(crate) fn settings_values(config: &Value) -> SettingsValues {
         .and_then(Value::as_u64)
         .unwrap_or(download_defaults.segments as u64)
         .clamp(2, 12);
+    let prewarm_concurrency = config
+        .get("advanced")
+        .and_then(|advanced| advanced.get("prewarmConcurrency"))
+        .and_then(Value::as_u64)
+        .unwrap_or(8)
+        .clamp(1, 32);
+    let plan_cache_secs = config
+        .get("advanced")
+        .and_then(|advanced| advanced.get("planCacheSecs"))
+        .and_then(Value::as_u64)
+        .unwrap_or(600)
+        .clamp(10, 86_400);
     let relay = config
         .get("advanced")
         .and_then(|advanced| advanced.get("relay"));
@@ -299,6 +313,8 @@ pub(crate) fn settings_values(config: &Value) -> SettingsValues {
         mirror_source,
         download_enabled,
         download_segments: download_segments.to_string(),
+        prewarm_concurrency: prewarm_concurrency.to_string(),
+        plan_cache_secs: plan_cache_secs.to_string(),
         relay_enabled: relay
             .and_then(|value| value.get("enabled"))
             .and_then(Value::as_bool)
@@ -387,6 +403,26 @@ fn apply_setting_string(runtime: &HakimiRuntime, key: &str, value: &str) -> Opti
             }
             "advanced.http1Hosts" => {
                 config.advanced.http1_hosts = split_entries(value);
+            }
+            "advanced.prewarmConcurrency" => {
+                let value: usize = value
+                    .trim()
+                    .parse()
+                    .context("预热并发需为 1–32 之间的整数")?;
+                if !(1..=32).contains(&value) {
+                    bail!("预热并发需在 1–32 之间");
+                }
+                config.advanced.prewarm_concurrency = value;
+            }
+            "advanced.planCacheSecs" => {
+                let value: u64 = value
+                    .trim()
+                    .parse()
+                    .context("计划缓存时长需为 10–86400 之间的整数秒")?;
+                if !(10..=86_400).contains(&value) {
+                    bail!("计划缓存时长需在 10–86400 秒之间");
+                }
+                config.advanced.plan_cache_secs = value;
             }
             other => bail!("未知设置项 {other}"),
         }
@@ -952,6 +988,8 @@ impl Ui {
         if config_changed && s.cfg_download_segments.get() != segments {
             s.cfg_download_segments.set(segments);
         }
+        assign_str(s.cfg_prewarm_concurrency, &st.prewarm_concurrency);
+        assign_str(s.cfg_plan_cache_secs, &st.plan_cache_secs);
         assign_str(s.cfg_relay_listen, &st.relay_listen);
         assign_str(s.cfg_relay_target, &st.relay_target);
         assign_str(s.cfg_http1_hosts, &st.http1_hosts);
