@@ -931,6 +931,14 @@ fn into_proxy_response(
     let status = response.status();
     let upgrade = status == StatusCode::SWITCHING_PROTOCOLS;
     sanitize_response_headers(response.headers_mut(), upgrade);
+    // HTTP/3 rides on UDP/443, which a local HTTP proxy cannot carry. Once a
+    // browser learns h3 from `alt-svc` it dials the origin directly and every
+    // routing decision here — ECH, IP scoring, failure switching — is bypassed.
+    // Dropping the header keeps the browser on TCP; `advanced.blockQuic` opts
+    // out for the rare site that only works over h3.
+    if ctx.config.snapshot().advanced.block_quic {
+        response.headers_mut().remove(header::ALT_SVC);
+    }
     let (parts, body) = response.into_parts();
     Response::from_parts(
         parts,

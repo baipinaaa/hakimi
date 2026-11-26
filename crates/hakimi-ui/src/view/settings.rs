@@ -472,6 +472,7 @@ fn section_network(s: UiSignals, tx: Sender<Action>) -> Element {
                         "8",
                         tx.clone(),
                     ))
+                    .child(row_line())
                     .child(field_row_fill(
                         &s,
                         "计划缓存",
@@ -480,6 +481,20 @@ fn section_network(s: UiSignals, tx: Sender<Action>) -> Element {
                         s.cfg_plan_cache_secs,
                         "600",
                         tx.clone(),
+                    ))
+                    .child(row_line())
+                    .child(toggle_row(
+                        "阻止 QUIC 绕过",
+                        "抹掉响应里的 alt-svc，让浏览器留在 TCP 上",
+                        signal(String::new()),
+                        s.cfg_block_quic,
+                        {
+                            let quic_tx = tx.clone();
+                            move |_, v| {
+                                let _ = quic_tx
+                                    .send(Action::SaveBool("advanced.blockQuic".into(), v));
+                            }
+                        },
                     )),
             )
             .width_match(),

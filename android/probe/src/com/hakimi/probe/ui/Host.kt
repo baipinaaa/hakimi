@@ -36,6 +36,7 @@ interface Host {
     fun setGroupEnabled(site: SiteInfo, enabled: Boolean)
     fun setDownloadMirror(enabled: Boolean)
     fun setDownloadEnabled(enabled: Boolean)
+    fun setBlockQuic(enabled: Boolean)
     fun setDownloadSegments(segments: Int)
     fun saveGroup(group: JSONObject, isNew: Boolean, done: (Boolean, String?) -> Unit)
     fun deleteGroup(id: String, done: (Boolean, String?) -> Unit)

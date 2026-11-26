@@ -46,6 +46,7 @@ class SettingsScreen(private val context: Context, private val host: Host) {
     private lateinit var downloadEnabledRow: SwitchRow
     private lateinit var downloadSegmentsRow: SettingRow
     private lateinit var http1HostsRow: SettingRow
+    private lateinit var blockQuicRow: SwitchRow
     private lateinit var alwaysOnRow: SettingRow
     private lateinit var batteryRow: SettingRow
     private lateinit var refreshCatalogRow: SettingRow
@@ -210,7 +211,9 @@ class SettingsScreen(private val context: Context, private val host: Host) {
                 advancedNumber("planCacheSecs", "600")
             )
         }
-        content.addView(rowsCard(prewarmRow, planCacheRow))
+        blockQuicRow = SwitchRow(context, "阻止 QUIC 绕过", "抹掉 alt-svc，浏览器留在 TCP 上")
+        blockQuicRow.onCheckedChange = { host.setBlockQuic(it) }
+        content.addView(rowsCard(prewarmRow, planCacheRow, blockQuicRow))
         content.addView(space(10f))
 
         content.addView(section("后台"))
@@ -357,6 +360,13 @@ class SettingsScreen(private val context: Context, private val host: Host) {
                 if (downloadEnabled) Palette.TEXT_2 else Palette.MUTED
             )
         }
+
+        // 缺省为 true：老配置里没有这个键时 core 也会抹掉 alt-svc。
+        val blockQuic = host.core.configJson
+            .optJSONObject("advanced")
+            ?.optBoolean("blockQuic", true)
+            ?: true
+        if (!host.savingConfig) blockQuicRow.setChecked(blockQuic)
 
         val always = Prefs.systemAlwaysOn(context)
         alwaysOnRow.setValue(

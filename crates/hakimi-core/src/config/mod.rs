@@ -208,6 +208,12 @@ pub struct AdvancedConfig {
     /// How long a selected route (IP + TLS strategy) is reused for new upstream connections.
     /// Established pooled connections are reused independently of this value.
     pub plan_cache_secs: u64,
+    /// Strip `alt-svc` from every response. HTTP/3 rides on UDP/443, which a
+    /// local HTTP proxy cannot carry: once a browser learns h3 from alt-svc it
+    /// dials the origin directly and every routing decision here (ECH, IP
+    /// scoring, failure switching) is bypassed. Dropping the header keeps the
+    /// browser on TCP. Turn it off only if a site refuses to work without h3.
+    pub block_quic: bool,
     /// Idle timeout for pooled upstream HTTP/1.1 and HTTP/2 connections.
     pub upstream_idle_secs: u64,
     /// Maximum idle HTTP/1.1 connections kept per authority. Image hosts in
@@ -354,6 +360,7 @@ impl Default for AdvancedConfig {
             last_good_days: 7,
             prewarm_concurrency: 8,
             plan_cache_secs: 600,
+            block_quic: true,
             // A lean background profile: idle connections are the biggest
             // per-connection cost, and the proxy sits idle most of the time.
             upstream_idle_secs: 120,

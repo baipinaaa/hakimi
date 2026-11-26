@@ -235,6 +235,7 @@ pub(crate) struct SettingsValues {
     pub download_segments: String,
     pub prewarm_concurrency: String,
     pub plan_cache_secs: String,
+    pub block_quic: bool,
     pub relay_enabled: bool,
     pub relay_listen: String,
     pub relay_target: String,
@@ -290,6 +291,13 @@ pub(crate) fn settings_values(config: &Value) -> SettingsValues {
         .and_then(Value::as_u64)
         .unwrap_or(600)
         .clamp(10, 86_400);
+    // 缺省为 true：老配置文件里没有这个键时也要抹掉 alt-svc，否则升级后
+    // 浏览器会突然改走 h3 绕过代理。
+    let block_quic = config
+        .get("advanced")
+        .and_then(|advanced| advanced.get("blockQuic"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
     let relay = config
         .get("advanced")
         .and_then(|advanced| advanced.get("relay"));
@@ -315,6 +323,7 @@ pub(crate) fn settings_values(config: &Value) -> SettingsValues {
         download_segments: download_segments.to_string(),
         prewarm_concurrency: prewarm_concurrency.to_string(),
         plan_cache_secs: plan_cache_secs.to_string(),
+        block_quic,
         relay_enabled: relay
             .and_then(|value| value.get("enabled"))
             .and_then(Value::as_bool)
@@ -454,6 +463,9 @@ fn apply_setting_bool(runtime: &HakimiRuntime, key: &str, value: bool) -> Option
             }
             "advanced.download.enabled" => {
                 config.advanced.download.enabled = value;
+            }
+            "advanced.blockQuic" => {
+                config.advanced.block_quic = value;
             }
             "advanced.relay.enabled" => {
                 config.advanced.relay.enabled = value;
@@ -990,6 +1002,9 @@ impl Ui {
         }
         assign_str(s.cfg_prewarm_concurrency, &st.prewarm_concurrency);
         assign_str(s.cfg_plan_cache_secs, &st.plan_cache_secs);
+        if s.cfg_block_quic.get() != st.block_quic {
+            s.cfg_block_quic.set(st.block_quic);
+        }
         assign_str(s.cfg_relay_listen, &st.relay_listen);
         assign_str(s.cfg_relay_target, &st.relay_target);
         assign_str(s.cfg_http1_hosts, &st.http1_hosts);

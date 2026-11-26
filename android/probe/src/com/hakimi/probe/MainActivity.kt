@@ -884,6 +884,31 @@ class MainActivity : Activity(), Host {
         }
     }
 
+    override fun setBlockQuic(enabled: Boolean) {
+        if (configSaving) {
+            showSnack("正在保存设置，请稍候")
+            return
+        }
+        val next = runCatching { JSONObject(data.configJson.toString()) }.getOrNull()
+        if (next == null) {
+            showSnack("配置尚未就绪", error = true)
+            return
+        }
+        val advanced = next.optJSONObject("advanced")
+        if (advanced == null) {
+            showSnack("配置尚未就绪", error = true)
+            return
+        }
+        advanced.put("blockQuic", enabled)
+        applyConfig(next) { ok, error ->
+            when {
+                !ok -> showSnack(error ?: "保存失败", error = true)
+                enabled -> showSnack("已阻止 QUIC 绕过")
+                else -> showSnack("已允许浏览器使用 QUIC")
+            }
+        }
+    }
+
     override fun setDownloadSegments(segments: Int) {
         if (segments !in 2..8) {
             showSnack("下载线程需在 2–8 之间", error = true)

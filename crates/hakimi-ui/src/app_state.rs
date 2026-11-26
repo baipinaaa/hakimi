@@ -204,6 +204,8 @@ pub(crate) struct UiSignals {
     /// 这里只镜像显示，校验收在 `apply_setting_string` 的保存路径上。
     pub cfg_prewarm_concurrency: Signal<String>,
     pub cfg_plan_cache_secs: Signal<String>,
+    /// 抹掉响应里的 `alt-svc`，阻止浏览器发现 h3 后绕过本地代理。
+    pub cfg_block_quic: Signal<bool>,
     pub cfg_relay_enabled: Signal<bool>,
     pub cfg_relay_listen: Signal<String>,
     pub cfg_relay_target: Signal<String>,
@@ -298,6 +300,7 @@ impl Default for UiSignals {
             cfg_download_segments: signal(2),
             cfg_prewarm_concurrency: signal(String::new()),
             cfg_plan_cache_secs: signal(String::new()),
+            cfg_block_quic: signal(true),
             cfg_relay_enabled: signal(false),
             cfg_relay_listen: signal(String::new()),
             cfg_relay_target: signal(String::new()),
