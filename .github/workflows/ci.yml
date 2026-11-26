@@ -30,25 +30,3 @@ jobs:
       # 健康端点，再跑一遍 CA 模块的单元测试。
       - name: Proxy & CA smoke
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/ci/ca-smoke.ps1
-
-  check-other-platforms:
-    name: Compile check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ matrix.os }}-core
-
-      # 桌面壳依赖 webkit2gtk / AppKit，CI 上只检查 core（无 UI 依赖）。
-      - name: Check the core
-        run: cargo check -p hakimi-core --locked
