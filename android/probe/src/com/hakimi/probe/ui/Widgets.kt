@@ -303,6 +303,8 @@ class SiteRowView(
     private val iconFrame = FrameLayout(context)
     private val nameView: TextView
     private val summaryView: TextView
+    /** 第三行：线路 / 上次成功 / 最近失败。为空时整行隐藏。 */
+    private val detailView: TextView
     private val toggle = android.widget.Switch(context)
 
     var onOpen: (() -> Unit)? = null
@@ -332,6 +334,13 @@ class SiteRowView(
         summaryView.ellipsize = android.text.TextUtils.TruncateAt.END
         summaryView.setPadding(0, context.dp(3f), 0, 0)
         texts.addView(summaryView)
+
+        detailView = context.text("", 11f, Palette.MUTED)
+        detailView.maxLines = 1
+        detailView.ellipsize = android.text.TextUtils.TruncateAt.END
+        detailView.setPadding(0, context.dp(2f), 0, 0)
+        detailView.alpha = 0.85f
+        texts.addView(detailView)
 
         toggle.setShowText(false)
         toggle.layoutParams = LayoutParams(
@@ -395,6 +404,9 @@ class SiteRowView(
         summaryView.text = text
         summaryView.setTextColor(Palette.MUTED)
         summaryView.alpha = if (site.enabled) 1f else 0.7f
+
+        detailView.text = site.detail
+        detailView.visibility = if (site.detail.isEmpty()) GONE else VISIBLE
 
         toggle.setOnCheckedChangeListener(null)
         toggle.isChecked = site.enabled

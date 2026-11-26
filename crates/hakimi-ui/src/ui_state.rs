@@ -526,6 +526,7 @@ mod tests {
             tile_hex: "",
             summary: summary.into(),
             summary_hex: IDLE_COLOR,
+            detail: String::new(),
             enabled: true,
             open: false,
             first: false,

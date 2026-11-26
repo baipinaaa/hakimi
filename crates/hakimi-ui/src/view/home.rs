@@ -319,6 +319,35 @@ fn site_row(site: SiteData, tx: Sender<Action>) -> Element {
     let open = site.open;
     let enabled = site.enabled;
 
+    // Two lines plus an optional health line: name, summary, then the detail
+    // the core publishes (strategy, last success, last failure). The detail is
+    // omitted entirely when the group has never been probed, instead of
+    // leaving an empty row.
+    let mut info = Element::col()
+        .weight(1.0)
+        .cross(Align::Start)
+        .spacing(2)
+        .child(
+            Element::label(site.name.clone())
+                .font_size(13.0)
+                .font_weight(500)
+                .fg(if enabled { theme::TEXT } else { theme::TEXT_SOFT }),
+        )
+        .child(
+            Element::label(site.summary.clone())
+                .font_size(11.5)
+                .fg(theme::from_hex(site.summary_hex))
+                .truncate(Truncate::End),
+        );
+    if !site.detail.is_empty() {
+        info = info.child(
+            Element::label(site.detail.clone())
+                .font_size(10.5)
+                .fg(theme::TEXT_SOFT)
+                .truncate(Truncate::End),
+        );
+    }
+
     let check = signal(site.enabled);
     let check_state = check;
     let check_tx = tx.clone();
@@ -343,24 +372,7 @@ fn site_row(site: SiteData, tx: Sender<Action>) -> Element {
             signal(site.initial.clone()),
             theme::from_hex(site.tile_hex),
         ))
-        .child(
-            Element::col()
-                .weight(1.0)
-                .cross(Align::Start)
-                .spacing(2)
-                .child(
-                    Element::label(site.name.clone())
-                        .font_size(13.0)
-                        .font_weight(500)
-                        .fg(if enabled { theme::TEXT } else { theme::TEXT_SOFT }),
-                )
-                .child(
-                    Element::label(site.summary.clone())
-                        .font_size(11.5)
-                        .fg(theme::from_hex(site.summary_hex))
-                        .truncate(Truncate::End),
-                ),
-        );
+        .child(info);
 
     if !site.url.is_empty() {
         let url = site.url.clone();

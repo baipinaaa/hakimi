@@ -181,6 +181,36 @@ fn site_management_row(s: UiSignals, tx: Sender<Action>) -> Element {
 fn management_site_row(site: SiteData, tx: Sender<Action>) -> Element {
     let id = site.id.clone();
     let row_tx = tx.clone();
+    // Same three-line layout as the home list: name, summary, and the health
+    // detail when the core has one for this group.
+    let mut info = Element::col()
+        .weight(1.0)
+        .cross(Align::Start)
+        .spacing(1)
+        .child(
+            Element::label(site.name.clone())
+                .font_size(13.5)
+                .font_weight(500)
+                .fg(if site.enabled {
+                    theme::TEXT
+                } else {
+                    theme::TEXT_SOFT
+                }),
+        )
+        .child(
+            Element::label(site.summary.clone())
+                .font_size(11.5)
+                .fg(theme::from_hex(site.summary_hex))
+                .truncate(Truncate::End),
+        );
+    if !site.detail.is_empty() {
+        info = info.child(
+            Element::label(site.detail.clone())
+                .font_size(10.5)
+                .fg(theme::TEXT_SOFT)
+                .truncate(Truncate::End),
+        );
+    }
     let mut row = Element::row()
         .width_match()
         .height(48)
@@ -196,28 +226,7 @@ fn management_site_row(site: SiteData, tx: Sender<Action>) -> Element {
             signal(site.initial.clone()),
             theme::from_hex(site.tile_hex),
         ))
-        .child(
-            Element::col()
-                .weight(1.0)
-                .cross(Align::Start)
-                .spacing(1)
-                .child(
-                    Element::label(site.name.clone())
-                        .font_size(13.5)
-                        .font_weight(500)
-                        .fg(if site.enabled {
-                            theme::TEXT
-                        } else {
-                            theme::TEXT_SOFT
-                        }),
-                )
-                .child(
-                    Element::label(site.summary.clone())
-                        .font_size(11.5)
-                        .fg(theme::from_hex(site.summary_hex))
-                        .truncate(Truncate::End),
-                ),
-        )
+        .child(info)
         .child(common::chevron_right_icon());
     if !site.first {
         row = Element::col().width_match().child(inset_line()).child(row);

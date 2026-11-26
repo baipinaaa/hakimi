@@ -38,11 +38,85 @@ pub(crate) struct SiteData {
     pub(crate) tile_hex: &'static str,
     pub(crate) summary: String,
     pub(crate) summary_hex: &'static str,
+    /// Second line of health detail: which line the group is using, when it
+    /// last worked, and what broke most recently. Empty until the group has
+    /// been probed at least once. Kept separate from `summary` because that
+    /// string is rewritten by the display hysteresis and counted by
+    /// `finish_snapshot` (a "超时" inside a detail line must not mark the whole
+    /// site as failed).
+    pub(crate) detail: String,
     pub(crate) enabled: bool,
     pub(crate) open: bool,
     pub(crate) first: bool,
     pub(crate) url: String,
     pub(crate) domains: Vec<DomainData>,
+}
+
+mod health {
+    use serde_json::Value;
+
+    /// `2026-11-26T08:14:05.123Z` → `11-26 08:14`. Anything unexpected is
+    /// dropped rather than shown raw: a wrong timestamp is worse than none.
+    pub(super) fn short_stamp(raw: &str) -> Option<String> {
+        let bytes = raw.as_bytes();
+        if bytes.len() < 16 || bytes.get(4) != Some(&b'-') || bytes.get(10) != Some(&b'T') {
+            return None;
+        }
+        // `get` instead of slicing: a non-ASCII byte would otherwise panic on a
+        // non-char-boundary.
+        Some(format!("{} {}", raw.get(5..10)?, raw.get(11..16)?))
+    }
+
+    pub(super) fn mode_label(code: &str) -> Option<&'static str> {
+        Some(match code {
+            "direct" => "直连",
+            "ech" => "ECH",
+            "sni" => "伪装 SNI",
+            _ => return None,
+        })
+    }
+
+    pub(super) fn failure_label(code: &str) -> Option<&'static str> {
+        Some(match code {
+            "doh_failed" => "DoH 失败",
+            "doh_fallback" => "DoH 兜底",
+            "remote_catalog_unavailable" => "目录不可用",
+            "remote_ip_rejected" => "地址被拒",
+            "tcp_timeout" => "TCP 超时",
+            "tls_timeout" => "TLS 超时",
+            "tcp_unreachable" => "网络不可达",
+            "tls_reset" => "TLS 被重置",
+            "cert_invalid" => "证书无效",
+            "ech_unavailable" => "ECH 不可用",
+            "sni_rejected" => "SNI 被拒",
+            "ca_untrusted" => "根证书未信任",
+            "proxy_not_applied" => "代理未生效",
+            "quic_bypass" => "走了 QUIC",
+            "unsupported_without_proxy" => "必须走代理",
+            "no_candidate" => "无可用地址",
+            "tcp_refused" => "连接被拒",
+            "tls_error" => "TLS 错误",
+            "config_invalid" => "配置有误",
+            "internal" => "内部错误",
+            _ => return None,
+        })
+    }
+
+    /// The group-level `strategy` / `lastSuccess` / `lastError` triple the
+    /// core publishes, rendered as one compact line.
+    pub(super) fn detail(group: &Value) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(mode) = mode_label(&super::text(group, "strategy")) {
+            parts.push(mode.to_string());
+        }
+        if let Some(stamp) = short_stamp(&super::text(group, "lastSuccess")) {
+            parts.push(format!("成功 {stamp}"));
+        }
+        if let Some(label) = failure_label(&super::text(group, "lastError")) {
+            parts.push(format!("失败 {label}"));
+        }
+        parts.join(" · ")
+    }
 }
 
 /// UI preset index: 0 auto, 1 direct, 2 ECH, 3 SNI, 4 custom.
@@ -565,6 +639,7 @@ pub(crate) fn build_sites(
                 tile_hex,
                 summary,
                 summary_hex,
+                detail: health::detail(group),
                 enabled,
                 open: expanded.contains(&id_key),
                 first: false,

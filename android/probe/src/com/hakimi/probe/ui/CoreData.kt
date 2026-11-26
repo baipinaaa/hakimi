@@ -38,6 +38,8 @@ data class SiteInfo(
     val routeDetail: String,
     val summary: String,
     val summaryColor: Int,
+    /** 第二行状态详情：线路、上次成功、最近失败。未探测过时为空串。 */
+    val detail: String,
     val state: String,
     val custom: Boolean,
 )
@@ -318,6 +320,7 @@ object CoreParser {
                 ?: rawDomains.firstOrNull()?.removePrefix("*.")
                 ?: "example.com"
             val homepage = group.str("homepage").ifEmpty { "https://$primary/" }
+            val detail = siteDetail(statusGroup)
 
             sites += SiteInfo(
                 id = id,
@@ -333,6 +336,7 @@ object CoreParser {
                 summary = summary,
                 summaryColor = summaryColor,
                 state = state,
+                detail = detail,
                 custom = id !in BUILTIN_IDS,
             )
         }
@@ -435,6 +439,58 @@ object CoreParser {
             error = record.str("error"),
             detail = record.str("detail"),
         )
+    }
+
+    /**
+     * 第二行状态详情：这一组走的是哪条线路、上次成功、最近一次失败。
+     * 三个字段都可能为空——刚装好还没探测过时不该编造一行状态。
+     * 文案与桌面端 `crates/hakimi-ui/src/model.rs` 的 `health` 模块保持一致，
+     * 两边同时改才不会漂移。
+     */
+    private fun siteDetail(group: JSONObject?): String {
+        if (group == null) return ""
+        val parts = mutableListOf<String>()
+        strategyLabel(group.str("strategy"))?.let { parts += "线路 $it" }
+        shortStamp(group.str("lastSuccess"))?.let { parts += "成功 $it" }
+        failureLabel(group.str("lastError"))?.let { parts += "最近失败 $it" }
+        return parts.joinToString(" · ")
+    }
+
+    private fun strategyLabel(code: String): String? = when (code) {
+        "direct" -> "直连"
+        "ech" -> "ECH"
+        "sni" -> "伪装 SNI"
+        else -> null
+    }
+
+    private fun failureLabel(code: String): String? = when (code) {
+        "doh_failed" -> "DoH 失败"
+        "doh_fallback" -> "DoH 兜底"
+        "remote_catalog_unavailable" -> "目录不可用"
+        "remote_ip_rejected" -> "地址被拒"
+        "tcp_timeout" -> "TCP 超时"
+        "tls_timeout" -> "TLS 超时"
+        "tcp_unreachable" -> "网络不可达"
+        "tls_reset" -> "TLS 被重置"
+        "cert_invalid" -> "证书无效"
+        "ech_unavailable" -> "ECH 不可用"
+        "sni_rejected" -> "SNI 被拒"
+        "ca_untrusted" -> "根证书未信任"
+        "proxy_not_applied" -> "代理未生效"
+        "quic_bypass" -> "走了 QUIC"
+        "unsupported_without_proxy" -> "必须走代理"
+        "no_candidate" -> "无可用地址"
+        "tcp_refused" -> "连接被拒"
+        "tls_error" -> "TLS 错误"
+        "config_invalid" -> "配置有误"
+        "internal" -> "内部错误"
+        else -> null
+    }
+
+    /** `2026-11-26T08:14:05Z` → `11-26 08:14`；格式不对就不显示。 */
+    private fun shortStamp(raw: String): String? {
+        if (raw.length < 16 || raw[4] != '-' || raw[10] != 'T') return null
+        return raw.substring(5, 10) + " " + raw.substring(11, 16)
     }
 
     private fun JSONObject.str(key: String): String {

@@ -125,6 +125,18 @@ pub struct GroupStatus {
     pub tested_domains: usize,
     pub failed_domains: usize,
     pub last_check: Option<DateTime<Utc>>,
+    /// TLS mode the group's primary domain last succeeded with, so the UI can
+    /// answer "is this going direct, ECH, or a fake SNI?" without opening the
+    /// per-domain table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<TlsMode>,
+    /// Most recent failure reason in the group, kept even while other domains
+    /// of the same group still work.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<FailureReason>,
+    /// When any domain of the group last succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_success: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -174,6 +186,14 @@ pub struct StatusStore {
     /// compare it to skip rebuilding a snapshot that cannot have changed.
     revision: AtomicU64,
     started_at: DateTime<Utc>,
+    /// Wall clock of the last successful probe per domain. `Failed` records
+    /// keep their entry, so a group can still say "last worked at" while it is
+    /// currently broken — that is the difference between "this site is down"
+    /// and "our route to it broke".
+    ///
+    /// Lock order: `domains` before `last_success`. Both writers and readers
+    /// take them in that order.
+    last_success: RwLock<HashMap<String, DateTime<Utc>>>,
 }
 
 impl Default for StatusStore {
@@ -191,6 +211,7 @@ impl StatusStore {
             paused_watch: watch::channel(false).0,
             revision: AtomicU64::new(0),
             started_at: now(),
+            last_success: RwLock::new(HashMap::new()),
         }
     }
 
@@ -232,6 +253,9 @@ impl StatusStore {
     /// the same allocation in its outcome, so storing it here does not require
     /// a deep clone of attempts/suggestions.
     pub(crate) fn record_arc(&self, diagnostics: Arc<DomainDiagnostics>) {
+        // A success is what makes "last worked at" move; failures leave it be.
+        let success = matches!(diagnostics.state, State::Normal | State::Direct)
+            .then(|| (diagnostics.domain.clone(), diagnostics.last_check));
         let mut map = self.domains.write();
         let mut unchanged = false;
         let mut state_change: Option<(State, State)> = None;
@@ -294,6 +318,20 @@ impl StatusStore {
             self.revision.fetch_add(1, Ordering::SeqCst);
         }
         drop(map);
+        if let Some((domain, at)) = success {
+            let mut successes = self.last_success.write();
+            let entry = successes.entry(domain).or_insert(at);
+            if at > *entry {
+                *entry = at;
+            }
+            // Successes are rare enough that this map only ever holds domains
+            // that actually worked. The cap is a safety net for a config with
+            // hundreds of custom domains, not a hot path: dropping the history
+            // costs one "unknown" label per group.
+            if successes.len() > MAX_STATUS_DOMAINS {
+                successes.clear();
+            }
+        }
         if let Some((from, to, diagnostics)) = transition_log {
             tracing::info!(
                 domain = %diagnostics.domain,
@@ -453,6 +491,7 @@ impl StatusStore {
 
     pub fn groups_snapshot(&self, config: &AppConfig) -> Vec<GroupStatus> {
         let domains = self.domains.read();
+        let successes = self.last_success.read();
         let paused = self.paused();
         config
             .groups
@@ -469,7 +508,15 @@ impl StatusStore {
                 let mut tested = 0;
                 let mut failed = 0;
                 let mut last_check = None;
+                let mut last_error = None;
+                let mut last_error_at = None;
+                let mut last_success = None;
                 for domain in group.exact_domains() {
+                    if let Some(at) = successes.get(domain) {
+                        if last_success.is_none_or(|seen| *at > seen) {
+                            last_success = Some(*at);
+                        }
+                    }
                     let Some(entry) = domains.get(domain) else {
                         continue;
                     };
@@ -485,7 +532,25 @@ impl StatusStore {
                     if last_check.is_none_or(|at| entry.last_check > at) {
                         last_check = Some(entry.last_check);
                     }
+                    // The most recent failure wins, so the UI reports what is
+                    // broken now rather than the first thing that broke today.
+                    if let Some(error) = entry.error {
+                        if last_error_at.is_none_or(|at| entry.last_check > at) {
+                            last_error_at = Some(entry.last_check);
+                            last_error = Some(error);
+                        }
+                    }
                 }
+
+                let strategy = primary
+                    .as_ref()
+                    .and_then(|domain| domains.get(domain))
+                    .and_then(|entry| entry.strategy)
+                    .or_else(|| {
+                        group
+                            .exact_domains()
+                            .find_map(|domain| domains.get(domain).and_then(|entry| entry.strategy))
+                    });
 
                 let state = if !group.enabled {
                     State::Disabled
@@ -510,6 +575,9 @@ impl StatusStore {
                     tested_domains: tested,
                     failed_domains: failed,
                     last_check,
+                    strategy,
+                    last_error,
+                    last_success,
                 }
             })
             .collect()
@@ -519,6 +587,7 @@ impl StatusStore {
         let mut map = self.domains.write();
         map.clear();
         *self.counts.write() = StatusCounts::default();
+        self.last_success.write().clear();
     }
 }
 
@@ -726,6 +795,46 @@ mod tests {
         store.record(stale);
         store.mark_checking(Some("github"), "stale.example", vec![TlsMode::Direct], 1);
         assert_eq!(store.get("stale.example").unwrap().state, State::Checking);
+    }
+
+    #[test]
+    fn publishes_the_last_success_and_failure() {
+        let store = StatusStore::new();
+        let config = AppConfig::default();
+
+        // Never probed: the UI must be able to tell "no data yet" from "failed",
+        // otherwise it renders an invented status line.
+        let github = store
+            .groups_snapshot(&config)
+            .into_iter()
+            .find(|g| g.id == "github")
+            .unwrap();
+        assert!(github.strategy.is_none());
+        assert!(github.last_success.is_none());
+        assert!(github.last_error.is_none());
+
+        store.record(report("github.com", State::Normal));
+        let github = store
+            .groups_snapshot(&config)
+            .into_iter()
+            .find(|g| g.id == "github")
+            .unwrap();
+        assert_eq!(github.strategy, Some(TlsMode::Direct));
+        assert!(github.last_success.is_some(), "a success must be stamped");
+        assert!(github.last_error.is_none());
+
+        let mut failed = report("api.github.com", State::Failed);
+        failed.error = Some(FailureReason::TcpTimeout);
+        store.record(failed);
+        let github = store
+            .groups_snapshot(&config)
+            .into_iter()
+            .find(|g| g.id == "github")
+            .unwrap();
+        // One failing domain must not erase the group's last success: the line
+        // reads "ECH · 成功 11-26 08:14 · 失败 TCP 超时".
+        assert_eq!(github.last_error, Some(FailureReason::TcpTimeout));
+        assert!(github.last_success.is_some());
     }
 
     #[test]
