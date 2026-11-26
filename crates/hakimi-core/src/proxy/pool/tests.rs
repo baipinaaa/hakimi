@@ -1140,6 +1140,7 @@ async fn image_bursts_keep_the_http1_connections_idle() {
 /// A refused first candidate must not make the healthy fallback wait out the
 /// 150 ms hedge window.  This is the latency a browser sees when a stale
 /// last-good address is still cached but the origin has moved.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn refused_candidate_releases_the_hedge_window() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

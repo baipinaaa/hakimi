@@ -406,6 +406,8 @@ async fn raw_tunnel_race_stops_at_its_overall_deadline() {
 /// The black-hole test above only proves that a slow first candidate is
 /// eventually bypassed; this one measures the fast-failure path that a stale
 /// last-good IP usually takes.
+// Windows 对已关闭端口不一定回 RST（可能直接丢弃），这几条只对 Unix 稳定。
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn raw_tunnel_releases_hedge_after_refusal() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -437,6 +439,7 @@ async fn raw_tunnel_releases_hedge_after_refusal() {
 /// The cached direct route is the first race member now. A refused cached
 /// address must release the catalog candidate immediately, exactly like any
 /// other first candidate.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn raw_cached_plan_releases_hedge_after_refusal() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -487,6 +490,7 @@ async fn raw_cached_plan_releases_hedge_after_refusal() {
 
 /// Same fast-failure rule for the address race used by bypass tunnels and
 /// plain-HTTP upstreams.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn address_race_releases_hedge_after_refusal() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
