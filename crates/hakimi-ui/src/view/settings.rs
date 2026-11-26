@@ -449,66 +449,6 @@ fn section_network(s: UiSignals, tx: Sender<Action>) -> Element {
             ))
             .width_match(),
         )
-        .child(subhead("图片中转"))
-        .child(
-            card(
-                Element::col()
-                    .width_match()
-                    .child(image_relay_toggle(
-                        &s,
-                        "启用中转",
-                        "图片改走 Cloudflare 中转，网页与 API 不受影响",
-                        "advanced.imageRelays.pixiv.enabled",
-                        s.cfg_image_relay_enabled,
-                        tx.clone(),
-                    ))
-                    .child(field_row_fill(
-                        &s,
-                        "中转地址",
-                        "路径拼在该前缀后",
-                        "advanced.imageRelays.pixiv.base",
-                        s.cfg_image_relay_base,
-                        "",
-                        tx.clone(),
-                    ))
-                    .child(field_row_fill(
-                        &s,
-                        "适用域名",
-                        "逗号分隔",
-                        "advanced.imageRelays.pixiv.hosts",
-                        s.cfg_image_relay_hosts,
-                        "i.pximg.net",
-                        tx.clone(),
-                    ))
-                    .child(field_row_fill(
-                        &s,
-                        "只匹配路径",
-                        "逗号分隔；留空=整站",
-                        "advanced.imageRelays.pixiv.paths",
-                        s.cfg_image_relay_paths,
-                        "/img-original/",
-                        tx.clone(),
-                    ))
-                    .child(field_row_fill(
-                        &s,
-                        "请求 UA",
-                        "留空则不覆盖",
-                        "advanced.imageRelays.pixiv.userAgent",
-                        s.cfg_image_relay_ua,
-                        "留空不覆盖",
-                        tx.clone(),
-                    ))
-                    .child(image_relay_toggle(
-                        &s,
-                        "失败回落直连",
-                        "被拦截或超时后自动改走源站，代价是慢",
-                        "advanced.imageRelays.pixiv.fallbackDirect",
-                        s.cfg_image_relay_fallback,
-                        tx.clone(),
-                    )),
-            )
-            .width_match(),
-        )
         .child(subhead("隧道中继"))
         .child(
             card(
@@ -581,19 +521,6 @@ fn section_network(s: UiSignals, tx: Sender<Action>) -> Element {
             )
             .width_match(),
         )
-}
-
-fn image_relay_toggle(
-    _s: &UiSignals,
-    label: &'static str,
-    hint: &'static str,
-    key: &'static str,
-    value: Signal<bool>,
-    tx: Sender<Action>,
-) -> Element {
-    toggle_row(label, hint, signal(String::new()), value, move |_, v| {
-        let _ = tx.send(Action::SaveBool(key.to_string(), v));
-    })
 }
 
 fn relay_toggle(

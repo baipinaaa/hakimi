@@ -45,12 +45,6 @@ class SettingsScreen(private val context: Context, private val host: Host) {
     private lateinit var mirrorSourceRow: SettingRow
     private lateinit var downloadEnabledRow: SwitchRow
     private lateinit var downloadSegmentsRow: SettingRow
-    private lateinit var relayEnabledRow: SwitchRow
-    private lateinit var relayBaseRow: SettingRow
-    private lateinit var relayHostsRow: SettingRow
-    private lateinit var relayPathsRow: SettingRow
-    private lateinit var relayUaRow: SettingRow
-    private lateinit var relayFallbackRow: SwitchRow
     private lateinit var http1HostsRow: SettingRow
     private lateinit var alwaysOnRow: SettingRow
     private lateinit var batteryRow: SettingRow
@@ -159,53 +153,6 @@ class SettingsScreen(private val context: Context, private val host: Host) {
         content.addView(rowsCard(
             portRow, dohPrimaryRow, dohFallbackRow,
             ipCatalogRow, dohCatalogRow, resetCatalogRow
-        ))
-        content.addView(space(10f))
-
-        content.addView(section("图片中转"))
-        relayEnabledRow = SwitchRow(context, "启用中转", "图片改走中转，网页与 API 不受影响")
-        relayEnabledRow.onCheckedChange = { host.setImageRelayFlag("enabled", it) }
-        relayBaseRow = SettingRow(context, "中转地址", "路径拼在该前缀后")
-        relayBaseRow.clickOnce {
-            host.editSetting(
-                "advanced.imageRelays.pixiv.base",
-                "中转地址",
-                "必须是 https 地址",
-                imageRelayText(imageRelayRule(), "base")
-            )
-        }
-        relayHostsRow = SettingRow(context, "适用域名", "逗号分隔")
-        relayHostsRow.clickOnce {
-            host.editSetting(
-                "advanced.imageRelays.pixiv.hosts",
-                "适用域名",
-                "多个域名用逗号分隔",
-                imageRelayList(imageRelayRule(), "hosts")
-            )
-        }
-        relayPathsRow = SettingRow(context, "只匹配路径", "逗号分隔；留空=整站")
-        relayPathsRow.clickOnce {
-            host.editSetting(
-                "advanced.imageRelays.pixiv.paths",
-                "只匹配路径",
-                "多个路径前缀用逗号分隔；留空=整站",
-                imageRelayList(imageRelayRule(), "paths")
-            )
-        }
-        relayUaRow = SettingRow(context, "请求 UA", "留空则不覆盖")
-        relayUaRow.clickOnce {
-            host.editSetting(
-                "advanced.imageRelays.pixiv.userAgent",
-                "请求 UA",
-                "留空则透传浏览器的值",
-                imageRelayText(imageRelayRule(), "userAgent")
-            )
-        }
-        relayFallbackRow = SwitchRow(context, "失败回落直连", "中转失败时自动改走源站")
-        relayFallbackRow.onCheckedChange = { host.setImageRelayFlag("fallbackDirect", it) }
-        content.addView(rowsCard(
-            relayEnabledRow, relayBaseRow, relayHostsRow,
-            relayPathsRow, relayUaRow, relayFallbackRow
         ))
         content.addView(space(10f))
 
@@ -368,32 +315,6 @@ class SettingsScreen(private val context: Context, private val host: Host) {
         ipCatalogRow.setValue(shorten(configString("catalogs", "ip")).ifEmpty { "未设置" })
         dohCatalogRow.setValue(shorten(configString("catalogs", "doh")).ifEmpty { "未设置" })
 
-        val relay = imageRelayRule()
-        if (!host.savingConfig) {
-            relayEnabledRow.setChecked(relay?.optBoolean("enabled", false) == true)
-            relayFallbackRow.setChecked(relay?.optBoolean("fallbackDirect", true) != false)
-        }
-        val relayBase = imageRelayText(relay, "base")
-        relayBaseRow.setValue(
-            shorten(relayBase).ifEmpty { "未设置" },
-            if (relayBase.isEmpty()) Palette.MUTED else Palette.TEXT_2
-        )
-        val relayHosts = imageRelayList(relay, "hosts")
-        relayHostsRow.setValue(
-            shorten(relayHosts).ifEmpty { "未设置" },
-            if (relayHosts.isEmpty()) Palette.MUTED else Palette.TEXT_2
-        )
-        val relayPaths = imageRelayList(relay, "paths")
-        relayPathsRow.setValue(
-            if (relayPaths.isEmpty()) "全部路径" else shorten(relayPaths),
-            if (relayPaths.isEmpty()) Palette.MUTED else Palette.TEXT_2
-        )
-        val relayUa = imageRelayText(relay, "userAgent")
-        relayUaRow.setValue(
-            shorten(relayUa).ifEmpty { "跟随浏览器" },
-            if (relayUa.isEmpty()) Palette.MUTED else Palette.TEXT_2
-        )
-
         // The source URL doubles as the switch: empty means the mirror is off.
         val mirrorSource = mirrorSource().trim()
         val mirrorEnabled = mirrorSource.isNotEmpty()
@@ -439,12 +360,6 @@ class SettingsScreen(private val context: Context, private val host: Host) {
         // The thread count has no effect while segmentation is off; a row that
         // still opens a picker would imply otherwise.
         downloadSegmentsRow.setBusy(host.savingConfig || !downloadEnabled)
-        relayEnabledRow.setBusy(host.savingConfig)
-        relayBaseRow.setBusy(host.savingConfig)
-        relayHostsRow.setBusy(host.savingConfig)
-        relayPathsRow.setBusy(host.savingConfig)
-        relayUaRow.setBusy(host.savingConfig)
-        relayFallbackRow.setBusy(host.savingConfig)
         refreshCatalogRow.setBusy(host.refreshingCatalogs)
         diagnoseRow.setBusy(host.diagnosing)
         logRow.setBusy(host.loadingLog)
@@ -549,27 +464,8 @@ class SettingsScreen(private val context: Context, private val host: Host) {
         return core.configJson.optJSONObject(group)?.optString(key).orEmpty()
     }
 
-    private fun imageRelayRule(): JSONObject? {
-        val rules = host.core.configJson
-            .optJSONObject("advanced")
-            ?.optJSONArray("imageRelays")
-            ?: return null
-        return (0 until rules.length())
-            .mapNotNull { rules.optJSONObject(it) }
-            .firstOrNull { it.optString("id") == "pixiv" }
-    }
 
-    private fun imageRelayText(rule: JSONObject?, key: String): String {
-        val value = rule?.opt(key) ?: return ""
-        return if (value == JSONObject.NULL) "" else value.toString()
-    }
 
-    private fun imageRelayList(rule: JSONObject?, key: String): String {
-        val values = rule?.optJSONArray(key) ?: return ""
-        return (0 until values.length())
-            .mapNotNull { values.optString(it).takeIf { entry -> entry.isNotEmpty() } }
-            .joinToString(", ")
-    }
 
     private fun mirrorSource(): String = host.core.configJson
         .optJSONObject("advanced")

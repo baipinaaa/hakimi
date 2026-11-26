@@ -709,17 +709,6 @@ fn the_concurrency_caption_names_only_truncated_scenarios() {
 /// The card must render the shipped relay without the user typing anything:
 /// the values come from the config snapshot, which carries the defaults.
 #[test]
-fn the_settings_card_shows_the_shipped_image_relay() {
-    let config = serde_json::to_value(hakimi_core::config::AppConfig::default()).unwrap();
-    let settings = settings_values(&config);
-    assert!(settings.image_relay_enabled);
-    assert_eq!(settings.image_relay_base, "https://pic-relay.cyou/pximg");
-    assert_eq!(settings.image_relay_hosts, "i.pximg.net");
-    assert_eq!(settings.image_relay_paths, "/img-original/, /img-master/");
-    assert_eq!(settings.image_relay_user_agent, "Piku/3.7.0");
-    assert!(settings.image_relay_fallback);
-}
-
 /// The hosts and paths fields are comma separated. A Chinese input method
 /// emits `，`, and an unsplit entry made the host list invalid and the path
 /// list match nothing at all.

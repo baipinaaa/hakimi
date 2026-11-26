@@ -3,7 +3,7 @@
 //! Field renames live in serde (`alias`), not here — migrations only upgrade
 //! shapes. Every `apply` is idempotent and leaves user-customized values alone.
 
-use super::{AdvancedConfig, AppConfig, DownloadConfig, GroupConfig, ImageRelayRule, RoutePolicy};
+use super::{AdvancedConfig, AppConfig, DownloadConfig, GroupConfig, RoutePolicy};
 
 /// Shape version this build writes. Bump when adding a migration; files
 /// without the field deserialize as 0 and catch up in one load.
@@ -45,12 +45,6 @@ static MIGRATIONS: &[Migration] = &[
         describe: "http1Hosts gain the Pixiv asset CDN",
         applies_below: Some(3),
         apply: migrate_http1_hosts_asset_cdn,
-    },
-    Migration {
-        version: "0.1.9",
-        describe: "a half-created pixiv relay adopts the shipped address",
-        applies_below: Some(4),
-        apply: migrate_pixiv_relay,
     },
     Migration {
         version: "0.1.11",
@@ -203,35 +197,6 @@ fn migrate_poipiku_apex(config: &mut AppConfig) -> bool {
     adopt_route(group, "poipiku.com", RoutePolicy::sni(vec![String::new()]))
 }
 
-/// An earlier build created the `pixiv` rule the moment the settings card was
-/// touched, before there was a shipped address to fill in. Such a rule has an
-/// empty base and no referer/UA — anything else is a value the user chose, so
-/// only that signature is upgraded, and the rest of the shipped rule comes
-/// with it. Host and path lists the user did edit survive.
-fn migrate_pixiv_relay(config: &mut AppConfig) -> bool {
-    let shipped = ImageRelayRule::pixiv_default();
-    let Some(rule) = config
-        .advanced
-        .image_relays
-        .iter_mut()
-        .find(|rule| rule.id == shipped.id)
-    else {
-        return false;
-    };
-    if !rule.base.trim().is_empty() || rule.referer.is_some() || rule.user_agent.is_some() {
-        return false;
-    }
-    let hosts = std::mem::take(&mut rule.hosts);
-    let paths = std::mem::take(&mut rule.paths);
-    *rule = shipped;
-    if !hosts.is_empty() {
-        rule.hosts = hosts;
-    }
-    if !paths.is_empty() {
-        rule.paths = paths;
-    }
-    true
-}
 
 #[cfg(test)]
 mod tests {
@@ -357,43 +322,7 @@ mod tests {
     /// click, with an empty address. That half-created rule has to pick up the
     /// shipped address instead of staying blank forever.
     #[test]
-    fn a_half_created_pixiv_relay_adopts_the_shipped_address() {
-        let mut config = AppConfig::default();
-        config.schema_version = 3;
-        config.advanced.image_relays = vec![ImageRelayRule {
-            id: "pixiv".into(),
-            enabled: false,
-            hosts: vec!["i.pximg.net".into()],
-            paths: vec!["/img-original/".into()],
-            ..ImageRelayRule::default()
-        }];
-        run_migrations(&mut config);
-
-        let rule = &config.advanced.image_relays[0];
-        let shipped = ImageRelayRule::pixiv_default();
-        assert_eq!(rule.base, shipped.base);
-        assert_eq!(rule.user_agent, shipped.user_agent);
-        assert_eq!(rule.referer, shipped.referer);
-        assert!(
-            rule.enabled,
-            "a rule that was never configured adopts the shipped one, which is on"
-        );
-    }
-
     #[test]
-    fn a_configured_pixiv_relay_is_left_alone() {
-        let mut config = AppConfig::default();
-        config.schema_version = 3;
-        let mut rule = ImageRelayRule::pixiv_default();
-        rule.base = "https://mine.example/pximg".into();
-        config.advanced.image_relays = vec![rule];
-        assert!(!migrate_pixiv_relay(&mut config));
-        assert_eq!(
-            config.advanced.image_relays[0].base,
-            "https://mine.example/pximg"
-        );
-    }
-
     /// A file written by the previous release pins the v2 list verbatim. It is
     /// the default, not a choice, so it must pick up the asset CDN.
     #[test]

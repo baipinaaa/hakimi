@@ -448,26 +448,6 @@ async fn forward_with_uri(
         None
     };
     let mirrored = plan.is_some();
-    // Image relays replace the whole request, so they are resolved after the
-    // browser headers are cleaned up and before anything is built for the
-    // origin.
-    let relay = if parts.method == Method::GET || parts.method == Method::HEAD {
-        let config = config.get_or_insert_with(|| ctx.config.snapshot());
-        if config.advanced.image_relays.iter().any(|rule| rule.enabled) {
-            super::relay::plan(
-                config,
-                &parts.method,
-                &parts.headers,
-                &rule_uri,
-                &ctx.relay_health,
-            )
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-    let relayed = relay.is_some();
     // Keep the browser's headers for the direct retry and for the range
     // requests of a direct download: a private codeload archive needs its
     // cookies on every chunk. A mirror never sees them.
@@ -477,11 +457,6 @@ async fn forward_with_uri(
         // The mirrored path never reads `parts.headers` again, so the mirror
         // copy moves instead of cloning the whole map a second time.
         (direct_headers, std::mem::take(&mut parts.headers))
-    } else if relayed {
-        // The relay keeps its own copy of the headers; the direct fallback
-        // replays the browser's request unchanged.
-        (parts.headers.clone(), HeaderMap::new())
-    } else {
         // No mirror runs on this request, and the direct retry below is only
         // reachable from the mirrored branch. The segment base needs just the
         // handful of credential headers, so keep that small subset instead of
@@ -501,7 +476,6 @@ async fn forward_with_uri(
     let mut response;
     let mut served_by_mirror = false;
     let mut served_by_third_party = false;
-    let mut relay_trace: Option<super::relay::BodyTrace> = None;
     let mut mirror_prefix: Option<String> = None;
     let method = parts.method.clone();
     // Kept for the range-probe failover: the next candidate needs a rewrite.
@@ -535,84 +509,6 @@ async fn forward_with_uri(
                 response_uri = rule_uri.clone();
             }
         }
-    } else if let Some(relay) = relay {
-        if relay.parked {
-            return Err(format!("image relay `{}` is cooling down", relay.id));
-        }
-        let method = parts.method.clone();
-        // The budget covers the header wait only: once the relay starts
-        // streaming, the body belongs to the browser and is never cut off.
-        let attempt = tokio::time::timeout(
-            relay.timeout,
-            send_once(ctx, &method, &relay.headers, &relay.uri, upgrade_requested),
-        )
-        .await;
-        match attempt {
-            Ok(Ok(served)) => {
-                let failed = super::relay::should_fallback(served.status());
-                if failed {
-                    ctx.relay_health.note_failure(&relay.id);
-                } else {
-                    ctx.relay_health.note_success(&relay.id);
-                }
-                if failed && relay.fallback_direct {
-                    tracing::info!(
-                        relay = %relay.id,
-                        status = %served.status(),
-                        "image relay refused the request; serving the origin"
-                    );
-                    response =
-                        send_once(ctx, &method, &direct_headers, &rule_uri, upgrade_requested)
-                            .await?;
-                    response_uri = rule_uri.clone();
-                } else {
-                    // A cache HIT and a cache MISS read the same in the pool
-                    // log once the headers are in, which makes "the relay is
-                    // slow" impossible to rule out from logs alone.
-                    tracing::debug!(
-                        relay = %relay.id,
-                        status = %served.status(),
-                        cache = header_text(served.headers(), "cf-cache-status"),
-                        age = header_text(served.headers(), "age"),
-                        length = header_text(served.headers(), header::CONTENT_LENGTH.as_str()),
-                        "image relay answered"
-                    );
-                    response_uri = relay.uri;
-                    response = served;
-                    served_by_third_party = true;
-                    relay_trace = Some(super::relay::BodyTrace::new(&relay.id));
-                }
-            }
-            Ok(Err(error)) => {
-                ctx.relay_health.note_failure(&relay.id);
-                if !relay.fallback_direct {
-                    return Err(format!("image relay `{}` failed: {error}", relay.id));
-                }
-                tracing::info!(relay = %relay.id, error = %error, "image relay failed; serving the origin");
-                response =
-                    send_once(ctx, &method, &direct_headers, &rule_uri, upgrade_requested).await?;
-                response_uri = rule_uri.clone();
-            }
-            Err(_) => {
-                // A parked relay must never make the page slower than the
-                // origin would have been.
-                ctx.relay_health.note_failure(&relay.id);
-                if !relay.fallback_direct {
-                    return Err(format!(
-                        "image relay `{}` did not answer within {:?}",
-                        relay.id, relay.timeout
-                    ));
-                }
-                tracing::info!(
-                    relay = %relay.id,
-                    budget_ms = relay.timeout.as_millis() as u64,
-                    "image relay did not answer in time; serving the origin"
-                );
-                response =
-                    send_once(ctx, &method, &direct_headers, &rule_uri, upgrade_requested).await?;
-                response_uri = rule_uri.clone();
-            }
-        }
     } else {
         parts.uri = rule_uri.clone();
         // Keep a cheap `Uri` handle for the response body's error logger. Cloning
@@ -635,7 +531,7 @@ async fn forward_with_uri(
     // failure the original 302 is returned untouched and the browser keeps
     // today's direct path.
     let mut artifact_headers: Option<HeaderMap> = None;
-    if artifact_entry && !served_by_mirror && !relayed {
+    if artifact_entry && !served_by_mirror {
         if let Some((followed, target, download_headers)) = follow_github_artifact_redirect(
             ctx,
             &method,
@@ -691,12 +587,10 @@ async fn forward_with_uri(
                 }
             });
         }
-        return Ok(into_proxy_response(response, response_uri, ctx, relay_trace));
+        return Ok(into_proxy_response(response, response_uri, ctx));
     }
 
-    // Segmentation dials the origin URI directly, so it would quietly bypass a
-    // relay that is already carrying the bytes.
-    if !relayed && super::download::segment_eligible(ctx, &rule_uri, is_get, has_range, &response) {
+    if super::download::segment_eligible(ctx, &rule_uri, is_get, has_range, &response) {
         let base_headers = if served_by_mirror {
             &mirror_headers
         } else if let Some(headers) = artifact_headers.as_ref() {
@@ -835,7 +729,7 @@ async fn forward_with_uri(
         .await);
     }
 
-    Ok(into_proxy_response(response, response_uri, ctx, relay_trace))
+    Ok(into_proxy_response(response, response_uri, ctx))
 }
 
 /// First-byte budget for one mirror. A hung mirror must not hold the download
@@ -1033,7 +927,6 @@ fn into_proxy_response(
     mut response: Response<UpstreamResponseBody>,
     uri: http::Uri,
     ctx: &ProxyContext,
-    relay: Option<super::relay::BodyTrace>,
 ) -> Response<ProxyBody> {
     let status = response.status();
     let upgrade = status == StatusCode::SWITCHING_PROTOCOLS;
@@ -1041,7 +934,7 @@ fn into_proxy_response(
     let (parts, body) = response.into_parts();
     Response::from_parts(
         parts,
-        ProxyBody::upstream(body, uri, status, ctx.upstream.clone(), relay),
+        ProxyBody::upstream(body, uri, status, ctx.upstream.clone()),
     )
 }
 
