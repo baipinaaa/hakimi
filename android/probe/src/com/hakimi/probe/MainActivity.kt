@@ -503,8 +503,8 @@ class MainActivity : Activity(), Host {
         requestNotificationPermission()
 
         if (Prefs.mode(this) == Prefs.MODE_VPN) {
-            if (Build.VERSION.SDK_INT < 33) {
-                showSnack("VPN 模式需要 Android 13 及以上", error = true)
+            if (Build.VERSION.SDK_INT < 33 && Prefs.scope(this) != Prefs.SCOPE_ONLY) {
+                showSnack("Android 13 以下只支持「只接管所选应用」，请先到接管范围选择应用", error = true)
                 return
             }
             val consent = VpnService.prepare(this)
@@ -643,7 +643,7 @@ class MainActivity : Activity(), Host {
         ))
         sheet.add(modeOption(
             "VPN · 全部应用",
-            "HTTP(S) 走加速 · Android 13+",
+            "HTTP(S) 走加速 · Android 13+，更低版本需选应用",
             current == Prefs.MODE_VPN
         ) {
             sheet.dismiss()
@@ -692,8 +692,12 @@ class MainActivity : Activity(), Host {
             return
         }
         if (mode == Prefs.MODE_VPN) {
-            if (Build.VERSION.SDK_INT < 33) {
-                Sheets.info(this, "VPN 模式", "VPN 模式需要 Android 13 及以上。")
+            if (Build.VERSION.SDK_INT < 33 && Prefs.scope(this) != Prefs.SCOPE_ONLY) {
+                Sheets.info(
+                    this,
+                    "VPN 模式",
+                    "Android 13 以下没有「排除所有流量」的系统接口，只能把被接管的应用整个收进隧道，再让它们除了代理之外没有出口。\n\n请先到「接管范围」把模式改成「只接管所选应用」并选好应用，再开启 VPN。"
+                )
                 return
             }
             if (!userCaTrusted) {

@@ -59,12 +59,19 @@ class HakimiVpnService : VpnService() {
          * the UI reads it on resume to re-arm the consent dialog.
          */
         @Volatile var needsConsent = false
+
+        /** 全量接管且系统拿不到 DNS 时的兜底，避免不走代理的应用整片报错。 */
+        private val FALLBACK_DNS = listOf("223.5.5.5", "1.1.1.1")
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private val ownerToken = Prefs.token()
 
     private var tun: ParcelFileDescriptor? = null
+
+    /** Android 13 以下没有 excludeRoute，改用「全量路由 + 读空 TUN」。 */
+    @Volatile private var drainMode = false
+    private var drainer: Thread? = null
 
     @Volatile private var starting = false
     @Volatile private var stopping = false
@@ -235,14 +242,20 @@ class HakimiVpnService : VpnService() {
     }
 
     private fun establishVpn(port: Int) {
-        if (Build.VERSION.SDK_INT < 33) {
-            lastError = "VPN 模式需要 Android 13 及以上"
-            notice("hakimi VPN", lastError)
+        val scopeOnly = Prefs.scope(this) == Prefs.SCOPE_ONLY
+        // excludeRoute 是 API 33 才有的。更老的系统只能反过来做：把被接管
+        // 应用的流量全收进 TUN 再读空，效果等价于「除系统代理外没有出口」。
+        // 那条路会连非 HTTP 流量一起黑洞，所以只在用户点名了应用时开放。
+        drainMode = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        if (drainMode && !scopeOnly) {
+            lastError = "Android 13 以下只支持「只接管所选应用」"
+            notice("hakimi VPN", "请到「接管范围」选择应用后重试")
             return
         }
         val builder = this.Builder()
             .setSession("hakimi")
-            .addAddress("198.18.0.1", 32)
+            // 198.18.0.1 是 Clash 等 TUN 应用的默认地址，撞车时路由会错乱。
+            .addAddress("172.19.0.1", 32)
             .setMtu(1500)
             .setBlocking(false)
             .setMetered(false)
@@ -259,7 +272,17 @@ class HakimiVpnService : VpnService() {
         // Captured apps that do not read the system proxy resolve names
         // through this network; with no servers they fail as "network
         // unavailable" while the core keeps resolving on its own.
-        val dnsServers = underlyingDnsServers()
+        // 全量接管时还要兼顾不走代理的应用，它们没有 DNS 会直接报「网络不可用」；
+        // 所选应用模式不需要兜底，留空反而避免了自己的查询被泄漏。
+        val dnsServers = underlyingDnsServers().ifEmpty {
+            if (scopeOnly) {
+                emptyList()
+            } else {
+                FALLBACK_DNS.mapNotNull { host ->
+                    runCatching { InetAddress.getByName(host) }.getOrNull()
+                }
+            }
+        }
         dnsServers.forEach { server -> runCatching { builder.addDnsServer(server) } }
 
         // SCOPE_ONLY narrows the VPN to an explicit allowlist; every other
@@ -267,7 +290,6 @@ class HakimiVpnService : VpnService() {
         // out so the core's catalog/DoH traffic cannot loop back into its own
         // proxy, plus every app the user opted out of. The builder rejects a
         // mixed allow/disallow set, so the allowlist is resolved first.
-        val scopeOnly = Prefs.scope(this) == Prefs.SCOPE_ONLY
         val allowed = if (scopeOnly) {
             Prefs.allowedApps(this).filter { pkg ->
                 pkg != packageName &&
@@ -290,7 +312,14 @@ class HakimiVpnService : VpnService() {
             // and must not loop back into its own proxy.
         }
 
-        excludeAllTraffic(builder)
+        if (drainMode) {
+            // 老系统没有 excludeRoute：声明全量路由，再由 startDrain 读空，
+            // 让被接管应用除系统代理之外没有别的出口。
+            runCatching { builder.addRoute(InetAddress.getByName("0.0.0.0"), 0) }
+            runCatching { builder.addRoute(InetAddress.getByName("::"), 0) }
+        } else {
+            excludeAllTraffic(builder)
+        }
         if (stopping) return
         val next = builder.establish()
         if (next == null) {
@@ -311,11 +340,12 @@ class HakimiVpnService : VpnService() {
             return
         }
         tun = next
+        if (drainMode) startDrain(next)
         active = true
         needsConsent = false
         lastError = ""
         retryDelay = 3_000L
-        Log.i(TAG, "VPN established apps=${if (scopeOnly) "only:${allowed.size}" else "all"} dns=${dnsServers.size} proxy=127.0.0.1:$port")
+        Log.i(TAG, "VPN established apps=${if (scopeOnly) "only:${allowed.size}" else "all"} dns=${dnsServers.size} proxy=127.0.0.1:$port drain=$drainMode")
         notice("hakimi VPN 加速中", captureLabel())
         scheduleHealth(15_000L)
     }
@@ -383,6 +413,30 @@ class HakimiVpnService : VpnService() {
         Log.i(TAG, "exclude all routes v4=${v4.isSuccess} v6=${v6.isSuccess}")
     }
 
+    /**
+     * 读空 TUN。Android 13 以下没有 excludeRoute，只能靠这一步保证「除系统
+     * 代理外没有出口」；读线程本身也能防止部分 ROM 因 TUN 长期无人读取而判定
+     * VPN 无网络并强制断开。
+     */
+    private fun startDrain(descriptor: ParcelFileDescriptor) {
+        drainer?.interrupt()
+        drainer = Thread({
+            val buffer = ByteArray(16 * 1024)
+            try {
+                ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
+                    while (!Thread.currentThread().isInterrupted) {
+                        if (input.read(buffer) < 0) break
+                    }
+                }
+            } catch (error: Throwable) {
+                Log.i(TAG, "TUN drain stopped: ${error.javaClass.simpleName}")
+            }
+        }, "hakimi-tun-drain").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
     private fun scheduleHealth(delay: Long) {
         handler.removeCallbacks(health)
         handler.postDelayed(health, delay)
@@ -395,6 +449,8 @@ class HakimiVpnService : VpnService() {
         handler.removeCallbacks(health)
         starting = false
         active = false
+        drainer?.interrupt()
+        drainer = null
         runCatching { tun?.close() }
         tun = null
         CoreController.stop(ownerToken) {
@@ -409,6 +465,8 @@ class HakimiVpnService : VpnService() {
         handler.removeCallbacks(health)
         active = false
         lastError = "VPN 被其他应用接管"
+        drainer?.interrupt()
+        drainer = null
         runCatching { tun?.close() }
         tun = null
         CoreController.stop(ownerToken)
@@ -420,6 +478,8 @@ class HakimiVpnService : VpnService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        drainer?.interrupt()
+        drainer = null
         runCatching { tun?.close() }
         tun = null
         active = false

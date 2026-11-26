@@ -1,6 +1,7 @@
 package com.hakimi.probe.ui
 
 import android.content.Context
+import android.os.Build
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.text.Editable
@@ -189,9 +190,14 @@ class AppsScopeSheet(
             } else {
                 "只有这些应用走加速"
             }
-            else -> "全部进入 VPN；不读代理的 App 可能断网"
+            else -> if (Build.VERSION.SDK_INT < 33) {
+                "Android 13 以下只能用「只接管」：全部应用的流量会被隧道吞掉"
+            } else {
+                "全部进入 VPN；不读代理的 App 可能断网"
+            }
         }
-        val warn = scope == Prefs.SCOPE_ALL || (scope == Prefs.SCOPE_ONLY && allowed.isEmpty())
+        val legacyAll = Build.VERSION.SDK_INT < 33 && scope == Prefs.SCOPE_ALL
+        val warn = legacyAll || scope == Prefs.SCOPE_ALL || (scope == Prefs.SCOPE_ONLY && allowed.isEmpty())
         hint.setTextColor(if (warn) Palette.AMBER else Palette.MUTED)
         count.text = when (scope) {
             Prefs.SCOPE_ONLY -> if (allowed.isEmpty()) {
